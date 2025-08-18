@@ -174,7 +174,12 @@ export class EdgeTTS {
     async *synthesizeStream(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): AsyncGenerator<Uint8Array, void, unknown> {
         this.audio_stream = [];
         const req_id = this.generateUUID();
-        this.ws = new WebSocket(`${Constants.WSS_URL}?trustedclienttoken=${Constants.TRUSTED_CLIENT_TOKEN}&ConnectionId=${req_id}`);
+        const secMsGEC = await this.generateSecMsGec(
+            Constants.TRUSTED_CLIENT_TOKEN,
+        )
+        const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=${req_id}`
+
+        this.ws = new WebSocket(url);
 
         const SSML_text = this.getSSML(text, voice, options);
 
