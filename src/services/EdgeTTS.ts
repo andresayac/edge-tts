@@ -108,10 +108,16 @@ export class EdgeTTS {
         return `${volumeValue}%`;
     }
     async synthesize(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): Promise<void> {
+        const secMsGEC = await this.generateSecMsGec(
+            Constants.TRUSTED_CLIENT_TOKEN,
+        )
+        
         return new Promise((resolve, reject) => {
             this.audio_stream = [];
             const req_id = this.generateUUID();
-            this.ws = new WebSocket(`${Constants.WSS_URL}?trustedclienttoken=${Constants.TRUSTED_CLIENT_TOKEN}&ConnectionId=${req_id}`);
+            const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=${req_id}`
+
+            this.ws = new WebSocket(url);
 
             const SSML_text = this.getSSML(text, voice, options);
             const timeout = setTimeout(() => {
@@ -265,6 +271,21 @@ export class EdgeTTS {
         if (buffer.toString().includes("Path:turn.end")) {
             this.ws?.close();
         }
+    }
+
+    private async generateSecMsGec(trustedClientToken: string): Promise<string> {
+        const ticks = Math.floor(Date.now() / 1000) + 11644473600
+        const rounded = ticks - (ticks % 300)
+        const windowsTicks = rounded * 10000000
+
+        const encoder = new TextEncoder()
+        const data = encoder.encode(`${windowsTicks}${trustedClientToken}`)
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+
+        return Array.from(new Uint8Array(hashBuffer))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase()
     }
 
     getDuration(): number {
