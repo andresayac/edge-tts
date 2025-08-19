@@ -9,6 +9,7 @@ export interface Voice {
     Gender: string;
     Locale: string;
     FriendlyName: string;
+    LocalName: string;
 }
 
 export interface SynthesisOptions {
@@ -39,15 +40,19 @@ export class EdgeTTS {
     private ws!: WebSocket;
 
     async getVoices(): Promise<Voice[]> {
-        const response = await fetch(`${Constants.VOICES_URL}?trustedclienttoken=${Constants.TRUSTED_CLIENT_TOKEN}`, {
+        const secMsGEC = await this.generateSecMsGec(
+            Constants.TRUSTED_CLIENT_TOKEN,
+        )
+
+        const response = await fetch(`${Constants.VOICES_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`, {
             headers: {
                 "User-Agent": Constants.USER_AGENT
             },
         });
         const data = await response.json();
         return data.map((voice: any) => {
-            delete voice.VoiceTag;
-            delete voice.SuggestedCodec;
+            voice.FriendlyName = voice.FriendlyName || voice.LocalName;
+            delete voice.SampleRateHertz;
             delete voice.Status;
             return voice;
         });
@@ -115,11 +120,11 @@ export class EdgeTTS {
         const secMsGEC = await this.generateSecMsGec(
             Constants.TRUSTED_CLIENT_TOKEN,
         )
-        
+
         return new Promise((resolve, reject) => {
             this.audio_stream = [];
-            const req_id = this.generateUUID();
-            const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=${req_id}`
+            const reqId = this.generateUUID();
+            const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
             this.ws = new WebSocket(url, {
                 headers: {
@@ -138,7 +143,7 @@ export class EdgeTTS {
                 const message = this.buildTTSConfigMessage();
                 this.ws.send(message);
 
-                const speechMessage = `X-RequestId:${req_id}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${SSML_text}`;
+                const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${SSML_text}`;
                 this.ws.send(speechMessage);
             });
 
@@ -181,13 +186,19 @@ export class EdgeTTS {
 
     async *synthesizeStream(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): AsyncGenerator<Uint8Array, void, unknown> {
         this.audio_stream = [];
-        const req_id = this.generateUUID();
+        
+        const reqId = this.generateUUID();
         const secMsGEC = await this.generateSecMsGec(
             Constants.TRUSTED_CLIENT_TOKEN,
-        )
-        const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=${req_id}`
+        );
 
-        this.ws = new WebSocket(url);
+        const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+
+        this.ws = new WebSocket(url, {
+            headers: {
+                "User-Agent": Constants.USER_AGENT
+            }
+        });
 
         const SSML_text = this.getSSML(text, voice, options);
 
@@ -214,7 +225,7 @@ export class EdgeTTS {
             const message = this.buildTTSConfigMessage();
             this.ws.send(message);
 
-            const speechMessage = `X-RequestId:${req_id}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${SSML_text}`;
+            const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${SSML_text}`;
             this.ws.send(speechMessage);
         });
 
@@ -320,7 +331,7 @@ export class EdgeTTS {
         };
     }
 
-    async toFile(outputPath: string,format = this.audio_format): Promise<string> {
+    async toFile(outputPath: string, format = this.audio_format): Promise<string> {
         if (!format || typeof format !== 'string') format = this.audio_format;
         const audioBuffer = this.toBuffer();
         const finalPath = `${outputPath}.${format}`;
@@ -336,7 +347,7 @@ export class EdgeTTS {
     toBase64(): string {
         return this.toBuffer().toString('base64');
     }
-    
+
     toBuffer(): Buffer {
         if (this.audio_stream.length === 0) {
             throw new Error("No audio data available. Did you run synthesize() first?");
