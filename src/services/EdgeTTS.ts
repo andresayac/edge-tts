@@ -39,7 +39,11 @@ export class EdgeTTS {
     private ws!: WebSocket;
 
     async getVoices(): Promise<Voice[]> {
-        const response = await fetch(`${Constants.VOICES_URL}?trustedclienttoken=${Constants.TRUSTED_CLIENT_TOKEN}`);
+        const response = await fetch(`${Constants.VOICES_URL}?trustedclienttoken=${Constants.TRUSTED_CLIENT_TOKEN}`, {
+            headers: {
+                "User-Agent": Constants.USER_AGENT
+            },
+        });
         const data = await response.json();
         return data.map((voice: any) => {
             delete voice.VoiceTag;
@@ -117,7 +121,11 @@ export class EdgeTTS {
             const req_id = this.generateUUID();
             const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=${req_id}`
 
-            this.ws = new WebSocket(url);
+            this.ws = new WebSocket(url, {
+                headers: {
+                    "User-Agent": Constants.USER_AGENT
+                }
+            });
 
             const SSML_text = this.getSSML(text, voice, options);
             const timeout = setTimeout(() => {
