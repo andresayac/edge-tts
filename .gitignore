@@ -178,3 +178,4 @@ dist
 *.mp3
 bin/
 *.wav
+word_boundaries.json

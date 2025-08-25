@@ -11,8 +11,10 @@
 - **Audio Information**: Get detailed information about generated audio (size, duration, format).
 - **Audio Export Options**: Export synthesized audio in different formats (raw, base64, or directly to a file).
 - **Streaming Support**: Stream audio data in real-time for better performance.
+- **Word Boundaries Metadata**: Get word boundary information with precise timestamps.
 - **Command-Line Interface**: Use a simple CLI for easy access to functionality.
 - **Easy Integration**: Modular structure allows for easy inclusion in existing projects.
+- **SSML Custom**: 🥳🥳 Edge TTS accepts raw SSML with all characteristics of Azure AI Speech.  
 
 ## Installation
 
@@ -38,6 +40,11 @@ npm install -g @andresaya/edge-tts
 To synthesize speech from text:
 ```bash
 edge-tts synthesize -t "Hello, world!" -o hello_world_audio
+```
+
+From file in format SSML:
+```bash
+edge-tts synthesize -f ssml.txt --ssml -o salida
 ```
 
 To list available voices:
@@ -83,6 +90,49 @@ const maleVoices = await tts.getVoicesByGender('Male');
 ```
 
 ### Text Synthesis
+
+#### Custom SSML (Advanced)
+Edge TTS accepts raw SSML so you can control prosody, styles, pauses, pronunciations, and more. You can pass SSML from code or the CLI. By default the library auto-detects if your input is SSML; you can also force the mode.
+
+More information
+[Azure AI Speech](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-structure)
+
+####  @andresaya/ssml-builder
+A powerful, type-safe TypeScript library for building Speech Synthesis Markup Language (SSML) documents. Create expressive text-to-speech applications with Azure Speech Service and other SSML-compliant engines.
+
+#### What the library does for you
+
+- Auto-detect / force mode: options.inputType may be 'auto' | 'ssml' | 'text' (default: auto).
+- Validation: Throws helpful errors if SSML is malformed (e.g., missing <speak>, <voice>, or the synthesis namespace).
+- Voice injection: If your SSML lacks <voice>, it injects one with the voice you passed.
+- Text wrapping: If you pass plain text (or inputType: 'text'), it wraps it in a valid SSML envelope using your rate, pitch, and volume.
+
+```js
+import { EdgeTTS } from '@andresaya/edge-tts';
+
+const tts = new EdgeTTS();
+
+const ssml = `
+<speak version="1.0"
+       xmlns="http://www.w3.org/2001/10/synthesis"
+       xmlns:mstts="https://www.w3.org/2001/mstts"
+       xml:lang="es-CO">
+  <voice name="es-CO-GonzaloNeural">
+    <mstts:express-as style="narration-professional">
+      <prosody rate="+5%" pitch="+10Hz" volume="+0%">
+        Hola, este es un ejemplo de <emphasis>SSML</emphasis>.
+        <break time="400ms" />
+        El número es <say-as interpret-as="cardinal">2025</say-as>.
+        La palabra se pronuncia
+        <phoneme alphabet="ipa" ph="ˈxola">hola</phoneme>.
+      </prosody>
+    </mstts:express-as>
+  </voice>
+</speak>`.trim();
+
+// Auto-detects SSML, or force it with inputType: 'ssml'
+await tts.synthesize(ssml, 'es-CO-GonzaloNeural', { inputType: 'ssml' });
+```
 
 #### Basic Synthesis
 ```js
@@ -150,6 +200,17 @@ const filePath = await tts.toFile("output_audio");
 console.log(`Audio saved to: ${filePath}`);
 // Creates: output_audio.mp3
 ```
+
+### Word Boundaries Metadata
+
+```php
+// Get word boundaries with timestamps
+$boundaries = $tts->getWordBoundaries();
+
+// Save metadata to file
+$tts->saveMetadata('metadata.json');
+```
+
 
 ## Examples
 
