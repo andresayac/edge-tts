@@ -323,9 +323,11 @@ exploreVoices().catch(console.error);
 | `pitch` | `string \| number` | `-100Hz` to `+100Hz` | Voice pitch adjustment |
 | `rate` | `string \| number` | `-100%` to `+200%` | Speech rate adjustment |
 | `volume` | `string \| number` | `-100%` to `+100%` | Volume adjustment |
+| `inputType` | `string` | `ssml` or `auto` | Determines whether the input is SSML. default(auto) |
 
 ### Parameter Examples
 ```js
+
 // Using numbers (recommended)
 { pitch: 20, rate: -10, volume: 90 }
 
@@ -334,6 +336,9 @@ exploreVoices().catch(console.error);
 
 // Mixed usage
 { pitch: 15, rate: '25%', volume: 85 }
+
+// send SSML 
+{ pitch: 15, rate: '25%', volume: 85, inputType: 'ssml' }
 ```
 
 ## Error Handling
