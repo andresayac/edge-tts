@@ -14,6 +14,7 @@
 - **Word Boundaries Metadata**: Get word boundary information with precise timestamps.
 - **Command-Line Interface**: Use a simple CLI for easy access to functionality.
 - **Easy Integration**: Modular structure allows for easy inclusion in existing projects.
+- **SSML Custom**: 🥳🥳 Edge TTS accepts raw SSML with all characteristics of Azure AI Speech.  
 
 ## Installation
 
