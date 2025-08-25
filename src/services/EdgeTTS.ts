@@ -16,6 +16,13 @@ export interface SynthesisOptions {
     pitch?: string | number;
     rate?: string | number;
     volume?: string | number;
+    inputType?: 'auto' | 'ssml' | 'text'; // Nuevo campo
+}
+
+interface SSMLValidationResult {
+    isValid: boolean;
+    isSSML: boolean;
+    errors?: string[];
 }
 
 function ensureBuffer(data: RawData): Buffer {
@@ -166,17 +173,107 @@ export class EdgeTTS {
         });
     }
 
-    private getSSML(text: string, voice: string, options: SynthesisOptions = {}): string {
-        if (typeof options.pitch === 'string') {
-            options.pitch = options.pitch.replace('hz', 'Hz');
+    private detectSSML(content: string): SSMLValidationResult {
+        const trimmedContent = content.trim();
+
+        const looksLikeSSML = /^<\?xml|^<speak/i.test(trimmedContent);
+
+        if (!looksLikeSSML) {
+            return { isValid: true, isSSML: false };
+        }
+
+        const errors: string[] = [];
+
+        const hasSpeakTag = /<speak\b[^>]*>[\s\S]*<\/speak>/i.test(trimmedContent);
+        const hasVoiceTag = /<voice\b[^>]*>[\s\S]*<\/voice>/i.test(trimmedContent);
+
+        if (!hasSpeakTag) {
+            throw new Error('Invalid SSML: Missing <speak> tag');
+        }
+
+        if (!hasVoiceTag) {
+            throw new Error('Invalid SSML: Missing <voice> tag');
+        }
+
+        const hasCorrectNamespace = /xmlns="http:\/\/www\.w3\.org\/2001\/10\/synthesis"/i.test(trimmedContent);
+        if (!hasCorrectNamespace && hasSpeakTag) {
+            throw new Error('Invalid SSML: Missing or incorrect namespace declaration');
+        }
+
+        return {
+            isValid: errors.length === 0,
+            isSSML: hasSpeakTag || hasVoiceTag,
+            errors: errors.length > 0 ? errors : undefined
+        };
+    }
+
+    private escapeXML(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+    }
+
+    private getSSML(content: string, voice: string, options: SynthesisOptions = {}): string {
+        const inputType = options.inputType || 'auto';
+        let treatAsSSML = false;
+
+        if (inputType === 'ssml') {
+            treatAsSSML = true;
+        } else if (inputType === 'text') {
+            treatAsSSML = false;
+        } else { // 'auto'
+            const detection = this.detectSSML(content);
+            treatAsSSML = detection.isSSML;
+
+            if (detection.isSSML) {
+                console.log('→ Detected SSML input');
+                if (!detection.isValid) {
+                    console.warn('⚠ SSML validation warnings:', detection.errors);
+                }
+            } else {
+                console.log('→ Detected plain text input');
+            }
+        }
+
+        if (treatAsSSML) {            
+            let ssml = content.trim();
+
+            if (!ssml.includes('xmlns=')) {
+                ssml = ssml.replace(
+                    /<speak([^>]*)>/i,
+                    '<speak$1 xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts">'
+                );
+            }
+
+            if (!/<voice\b[^>]*>/i.test(ssml) && voice) {
+                ssml = ssml.replace(
+                    /(<speak[^>]*>)([\s\S]*?)(<\/speak>)/i,
+                    `$1<voice name="${voice}">$2</voice>$3`
+                );
+            }
+
+            return ssml;
         }
 
         const pitch = this.validatePitch(options.pitch ?? 0);
         const rate = this.validateRate(options.rate ?? 0);
         const volume = this.validateVolume(options.volume ?? 0);
 
-        return `<speak version='1.0' xml:lang='en-US'><voice name='${voice}'><prosody pitch='${pitch}' rate='${rate}' volume='${volume}'>${text}</prosody></voice></speak>`;
+        const escapedText = this.escapeXML(content);
+
+        return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+                    <voice name="${voice}">
+                        <prosody pitch="${pitch}" rate="${rate}" volume="${volume}">
+                            ${escapedText}
+                        </prosody>
+                    </voice>
+                </speak>
+        `;
     }
+
 
     private buildTTSConfigMessage(): string {
         return `X-Timestamp:${new Date().toISOString()}Z\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
@@ -186,7 +283,7 @@ export class EdgeTTS {
 
     async *synthesizeStream(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): AsyncGenerator<Uint8Array, void, unknown> {
         this.audio_stream = [];
-        
+
         const reqId = this.generateUUID();
         const secMsGEC = await this.generateSecMsGec(
             Constants.TRUSTED_CLIENT_TOKEN,
