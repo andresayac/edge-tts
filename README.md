@@ -97,8 +97,8 @@ Edge TTS accepts raw SSML so you can control prosody, styles, pauses, pronunciat
 More information
 [Azure AI Speech](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-structure)
 
-####  @andresaya/ssml-builder
-A powerful, type-safe TypeScript library for building Speech Synthesis Markup Language (SSML) documents. Create expressive text-to-speech applications with Azure Speech Service and other SSML-compliant engines.
+### SSML-builder 
+[@andresaya/ssml-builder](https://www.npmjs.com/package/@andresaya/ssml-builder) A powerful, type-safe TypeScript library for building Speech Synthesis Markup Language (SSML) documents. Create expressive text-to-speech applications with Azure Speech Service and other SSML-compliant engines.
 
 #### What the library does for you
 
