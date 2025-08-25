@@ -25,6 +25,13 @@ interface SSMLValidationResult {
     errors?: string[];
 }
 
+export interface WordBoundary {
+    type: "WordBoundary";
+    offset: number;
+    duration: number;
+    text: string;
+}
+
 function ensureBuffer(data: RawData): Buffer {
     if (Buffer.isBuffer(data)) {
         return data;
@@ -44,6 +51,7 @@ function ensureBuffer(data: RawData): Buffer {
 export class EdgeTTS {
     private audio_stream: Uint8Array[] = [];
     private audio_format: string = 'mp3';
+    private word_boundaries: WordBoundary[] = [];
     private ws!: WebSocket;
 
     async getVoices(): Promise<Voice[]> {
@@ -238,7 +246,7 @@ export class EdgeTTS {
             }
         }
 
-        if (treatAsSSML) {            
+        if (treatAsSSML) {
             let ssml = content.trim();
 
             if (!ssml.includes('xmlns=')) {
@@ -339,6 +347,16 @@ export class EdgeTTS {
                 push(chunk);
             }
 
+            if (buffer.toString().includes("Path:audio.metadata")) {
+                const metadataStart = buffer.indexOf("\r\n\r\n") + 4;
+                const metadataJson = buffer.toString().substring(metadataStart);
+                const meta = this.parseMetadata(metadataJson);
+                if (meta !== null) {
+                    this.word_boundaries.push(meta);
+                }
+                return;
+            }
+
             if (buffer.toString().includes('Path:turn.end')) {
                 this.ws?.close();
             }
@@ -389,9 +407,49 @@ export class EdgeTTS {
             this.audio_stream.push(new Uint8Array(audioChunk));
         }
 
+        if (buffer.toString().includes("Path:audio.metadata")) {
+            const metadataStart = buffer.indexOf("\r\n\r\n") + 4;
+            const metadataJson = buffer.toString().substring(metadataStart);
+            const meta = this.parseMetadata(metadataJson);
+            if (meta !== null) {
+                this.word_boundaries.push(meta);
+            }
+            return;
+        }
+
         if (buffer.toString().includes("Path:turn.end")) {
             this.ws?.close();
         }
+    }
+
+    private parseMetadata(data: string, offsetCompensation: number = 0): WordBoundary | null {
+        let metadata;
+
+        try {
+            metadata = JSON.parse(data);
+        } catch {
+            return null;
+        }
+
+        if (!metadata.Metadata) {
+            return null;
+        }
+
+        for (const metaObj of metadata.Metadata) {
+            if (metaObj.Type === "WordBoundary") {
+                const currentOffset = metaObj.Data.Offset + offsetCompensation;
+                const currentDuration = metaObj.Data.Duration;
+
+                return {
+                    type: "WordBoundary",
+                    offset: currentOffset,
+                    duration: currentDuration,
+                    text: metaObj.Data.text?.Text,
+                };
+            }
+        }
+
+        return null;
     }
 
     private async generateSecMsGec(trustedClientToken: string): Promise<string> {
@@ -450,5 +508,19 @@ export class EdgeTTS {
             throw new Error("No audio data available. Did you run synthesize() first?");
         }
         return Buffer.concat(this.audio_stream);
+    }
+
+    async saveMetadata(outputPath: string): Promise<void> {
+        if (this.word_boundaries.length === 0) {
+            throw new Error("No metadata available to save.");
+        }
+
+        const json = JSON.stringify(this.word_boundaries, null, 4);
+
+        await writeFile(outputPath, json);
+    }
+
+    getWordBoundaries(): WordBoundary[] {
+        return this.word_boundaries;
     }
 }
