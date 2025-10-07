@@ -157,8 +157,8 @@ export class EdgeTTS {
             this.ws.on('open', () => {
                 const message = this.buildTTSConfigMessage();
                 this.ws.send(message);
-
-                const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${SSML_text}`;
+                const timestamp = this.nowRFC1123();
+                const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${SSML_text}`;
                 this.ws.send(speechMessage);
             });
 
@@ -282,9 +282,32 @@ export class EdgeTTS {
         `;
     }
 
+    private nowRFC1123(timeZone = 'UTC'): string {
+        const now = new Date();
+
+        const options: Intl.DateTimeFormatOptions = {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            timeZone,
+            timeZoneName: 'short'
+        };
+
+        return now.toLocaleString('en-US', options);
+    }
+
+    private parseRFC1123(rfcStr: string): Date {
+        return new Date(rfcStr);
+    }
+
 
     private buildTTSConfigMessage(): string {
-        return `X-Timestamp:${new Date().toISOString()}Z\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
+        const timestamp = this.nowRFC1123();
+        return `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
             `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":false,"wordBoundaryEnabled":true},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
     }
 
@@ -330,7 +353,8 @@ export class EdgeTTS {
             const message = this.buildTTSConfigMessage();
             this.ws.send(message);
 
-            const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${SSML_text}`;
+            const timestamp = this.nowRFC1123();
+            const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${SSML_text}`;
             this.ws.send(speechMessage);
         });
 
@@ -452,10 +476,14 @@ export class EdgeTTS {
         return null;
     }
 
-    private async generateSecMsGec(trustedClientToken: string): Promise<string> {
-        const ticks = Math.floor(Date.now() / 1000) + 11644473600
-        const rounded = ticks - (ticks % 300)
-        const windowsTicks = rounded * 10000000
+    generateSecMsGec = async (trustedClientToken: string): Promise<string> => {
+        const now = this.nowRFC1123();
+
+        const fixedDate = this.parseRFC1123(now);
+
+        const ticks = Math.floor(fixedDate.getTime() / 1000) + 11644473600;
+        const rounded = ticks - (ticks % 300);
+        const windowsTicks = rounded * 10_000_000;
 
         const encoder = new TextEncoder()
         const data = encoder.encode(`${windowsTicks}${trustedClientToken}`)
