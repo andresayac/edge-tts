@@ -19,7 +19,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "build:bin": "bun scripts/build.ts"
+    "build:bin": "bun scripts/build.ts",
+    "prepublishOnly": "npm run build && npm run build:bin"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -31,7 +32,7 @@
     "commander": "^12.1.0",
     "events": "^3.3.0",
     "fs": "^0.0.1-security",
-    "ws": "^8.18.0"
+    "ws": "^8.18.3"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
