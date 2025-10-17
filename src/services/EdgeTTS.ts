@@ -2,6 +2,7 @@ import WebSocket, { type RawData } from 'ws';
 import { Constants } from '../config/constants';
 import { writeFile } from 'fs/promises';
 import { Buffer } from 'buffer';
+import https from 'https';
 
 export interface Voice {
     Name: string;
@@ -59,11 +60,29 @@ export class EdgeTTS {
             Constants.TRUSTED_CLIENT_TOKEN,
         )
 
-        const response = await fetch(`${Constants.VOICES_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`, {
-            headers: {
-                "User-Agent": Constants.USER_AGENT
-            },
+        const httpsAgent = new https.Agent({
+            rejectUnauthorized: false,
         });
+
+        const response = await new Promise<Response>((resolve, reject) => {
+            const req = https.request(
+                `${Constants.VOICES_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`,
+                {
+                    headers: {
+                        "User-Agent": Constants.USER_AGENT
+                    },
+                    agent: httpsAgent
+                },
+                (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => (data += chunk));
+                    res.on('end', () => resolve(new Response(data, { status: res.statusCode || 200 })));
+                }
+            );
+            req.on('error', reject);
+            req.end();
+        });
+        
         const data = await response.json();
         return data.map((voice: any) => {
             voice.FriendlyName = voice.FriendlyName || voice.LocalName;
@@ -144,7 +163,8 @@ export class EdgeTTS {
             this.ws = new WebSocket(url, {
                 headers: {
                     "User-Agent": Constants.USER_AGENT
-                }
+                },
+                rejectUnauthorized: false
             });
 
             const SSML_text = this.getSSML(text, voice, options);
@@ -325,7 +345,8 @@ export class EdgeTTS {
         this.ws = new WebSocket(url, {
             headers: {
                 "User-Agent": Constants.USER_AGENT
-            }
+            },
+            rejectUnauthorized: false
         });
 
         const SSML_text = this.getSSML(text, voice, options);
