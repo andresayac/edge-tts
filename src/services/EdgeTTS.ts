@@ -68,9 +68,7 @@ export class EdgeTTS {
             const req = https.request(
                 `${Constants.VOICES_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`,
                 {
-                    headers: {
-                        "User-Agent": Constants.USER_AGENT
-                    },
+                    headers: Constants.getBaseHeaders(),
                     agent: httpsAgent
                 },
                 (res) => {
@@ -82,7 +80,7 @@ export class EdgeTTS {
             req.on('error', reject);
             req.end();
         });
-        
+
         const data = await response.json();
         return data.map((voice: any) => {
             voice.FriendlyName = voice.FriendlyName || voice.LocalName;
@@ -161,9 +159,7 @@ export class EdgeTTS {
             const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
             this.ws = new WebSocket(url, {
-                headers: {
-                    "User-Agent": Constants.USER_AGENT
-                },
+                headers: Constants.getBaseHeaders(),
                 rejectUnauthorized: false
             });
 
@@ -343,9 +339,7 @@ export class EdgeTTS {
         const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
         this.ws = new WebSocket(url, {
-            headers: {
-                "User-Agent": Constants.USER_AGENT
-            },
+            headers: Constants.getBaseHeaders(),
             rejectUnauthorized: false
         });
 
