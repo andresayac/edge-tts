@@ -362,9 +362,80 @@ This library can be used directly in web browsers via CDN or ES modules.
 </script>
 ```
 
+### Custom SSML Support in Browser
+
+The browser version supports custom SSML (Speech Synthesis Markup Language) for advanced speech control:
+
+```html
+<script src="https://unpkg.com/@andresaya/edge-tts@latest/dist/browser/edge-tts.umd.min.js"></script>
+
+<script>
+  const tts = new EdgeTTS();
+  
+  // Custom SSML with emphasis, breaks, and expression
+  const ssml = `
+    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" 
+           xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+      <voice name="en-US-AriaNeural">
+        <mstts:express-as style="cheerful">
+          <prosody rate="+10%" pitch="+5Hz">
+            Hello! This is <emphasis>custom SSML</emphasis>.
+            <break time="500ms"/>
+            You have full control over speech synthesis!
+          </prosody>
+        </mstts:express-as>
+      </voice>
+    </speak>
+  `;
+  
+  // Synthesize with SSML
+  async function speakSSML() {
+    await tts.synthesize(ssml, '', { inputType: 'ssml' });
+    const audioData = tts.getAudioData();
+    
+    const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    audio.play();
+  }
+</script>
+```
+
+### Streaming Support in Browser
+
+```html
+<script type="module">
+  import { EdgeTTS } from 'https://unpkg.com/@andresaya/edge-tts@latest/dist/browser/edge-tts.esm.min.js';
+  
+  const tts = new EdgeTTS();
+  const chunks = [];
+  
+  // Stream audio chunks in real-time
+  for await (const chunk of tts.synthesizeStream("Long text to stream...", 'en-US-AriaNeural')) {
+    chunks.push(chunk);
+    console.log(`Received chunk: ${chunk.length} bytes`);
+  }
+  
+  // Combine and play all chunks
+  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const audioData = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    audioData.set(chunk, offset);
+    offset += chunk.length;
+  }
+  
+  const blob = new Blob([audioData], { type: 'audio/mp3' });
+  const audio = new Audio(URL.createObjectURL(blob));
+  audio.play();
+</script>
+```
+
 ### Complete Browser Example
 
 For a full working example with voice selection and synthesis, see [`examples/browser-standalone.html`](examples/browser-standalone.html).
+
+For advanced SSML examples, see [`examples/browser-ssml-demo.html`](examples/browser-ssml-demo.html).
 
 ## Voice Options
 

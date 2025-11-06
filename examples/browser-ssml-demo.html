@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge TTS - SSML Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        textarea,
+        select,
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        textarea {
+            min-height: 200px;
+            resize: vertical;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 20px;
+            display: none;
+        }
+
+        audio.show {
+            display: block;
+        }
+
+        .example-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-box:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .example-box h4 {
+            margin-bottom: 5px;
+            color: #667eea;
+        }
+
+        .example-box code {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .info-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #856404;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🎙️ Edge TTS - SSML Demo</h1>
+        <span class="badge">Advanced SSML Support</span>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('text')">Plain Text</button>
+            <button class="tab" onclick="switchTab('ssml')">Custom SSML</button>
+            <button class="tab" onclick="switchTab('examples')">SSML Examples</button>
+        </div>
+
+        <!-- Plain Text Tab -->
+        <div id="text-tab" class="tab-content active">
+            <div class="form-group">
+                <label for="plainText">Text to speak:</label>
+                <textarea id="plainText"
+                    placeholder="Enter plain text...">Hello! This is a test of the Edge Text-to-Speech system.</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="voice">Select voice:</label>
+                <select id="voice">
+                    <option>Loading voices...</option>
+                </select>
+            </div>
+
+            <div>
+                <button onclick="synthesizePlainText()">🔊 Speak Plain Text</button>
+            </div>
+        </div>
+
+        <!-- Custom SSML Tab -->
+        <div id="ssml-tab" class="tab-content">
+            <div class="form-group">
+                <label for="ssmlText">Custom SSML:</label>
+                <textarea id="ssmlText" placeholder="Enter SSML markup..."><speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-US-AriaNeural">
+    <mstts:express-as style="cheerful">
+      <prosody rate="+10%" pitch="+5Hz">
+        Hello! I'm speaking with <emphasis>custom SSML</emphasis>.
+        <break time="500ms"/>
+        This gives you full control over speech synthesis.
+      </prosody>
+    </mstts:express-as>
+  </voice>
+</speak></textarea>
+            </div>
+
+            <div>
+                <button onclick="synthesizeSSML()">🔊 Speak SSML</button>
+            </div>
+        </div>
+
+        <!-- Examples Tab -->
+        <div id="examples-tab" class="tab-content">
+            <h3 style="margin-bottom: 15px;">Click an example to load it:</h3>
+
+            <div class="example-box" onclick="loadExample('emphasis')">
+                <h4>📣 Emphasis & Breaks</h4>
+                <code>Using &lt;emphasis&gt; and &lt;break&gt; tags</code>
+            </div>
+
+            <div class="example-box" onclick="loadExample('style')">
+                <h4>🎭 Express-as Style</h4>
+                <code>Using different speaking styles like cheerful, sad, angry</code>
+            </div>
+
+            <div class="example-box" onclick="loadExample('phoneme')">
+                <h4>🔤 Phoneme Pronunciation</h4>
+                <code>Control exact pronunciation with IPA</code>
+            </div>
+
+            <div class="example-box" onclick="loadExample('sayas')">
+                <h4>🔢 Say-as (Numbers, Dates)</h4>
+                <code>Format numbers, dates, and special content</code>
+            </div>
+
+            <div class="example-box" onclick="loadExample('multilang')">
+                <h4>🌍 Multiple Languages</h4>
+                <code>Mix different languages in one synthesis</code>
+            </div>
+        </div>
+
+        <div class="status" id="status"></div>
+        <audio id="player" controls></audio>
+
+        <div class="info-box">
+            <strong>⚠️ Browser Compatibility:</strong><br>
+            This demo works best with <strong>Microsoft Edge browser</strong>. Support for other browsers is being
+            developed.
+        </div>
+    </div>
+
+    <script src="../dist/browser/edge-tts.umd.js"></script>
+    <script>
+        const tts = new EdgeTTS();
+        let audioUrl = null;
+
+        // SSML Examples
+        const examples = {
+            emphasis: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-US-AriaNeural">
+    This is <emphasis level="moderate">moderately emphasized</emphasis>.
+    <break time="500ms"/>
+    This is <emphasis level="strong">strongly emphasized</emphasis>.
+    <break time="1s"/>
+    Back to normal speech.
+  </voice>
+</speak>`,
+
+            style: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-US-AriaNeural">
+    <mstts:express-as style="cheerful">
+      I'm feeling happy and cheerful today!
+    </mstts:express-as>
+    <break time="500ms"/>
+    <mstts:express-as style="sad">
+      Now I'm feeling a bit sad.
+    </mstts:express-as>
+    <break time="500ms"/>
+    <mstts:express-as style="angry">
+      And now I'm angry!
+    </mstts:express-as>
+  </voice>
+</speak>`,
+
+            phoneme: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-US-AriaNeural">
+    The word tomato can be pronounced as 
+    <phoneme alphabet="ipa" ph="təˈmeɪtoʊ">tomato</phoneme> or
+    <phoneme alphabet="ipa" ph="təˈmɑːtəʊ">tomato</phoneme>.
+  </voice>
+</speak>`,
+
+            sayas: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-US-AriaNeural">
+    <say-as interpret-as="cardinal">12345</say-as>
+    <break time="300ms"/>
+    <say-as interpret-as="ordinal">1</say-as>
+    <break time="300ms"/>
+    <say-as interpret-as="digits">123</say-as>
+    <break time="300ms"/>
+    <say-as interpret-as="date" format="mdy">10/31/2025</say-as>
+    <break time="300ms"/>
+    <say-as interpret-as="time" format="hms12">2:30pm</say-as>
+  </voice>
+</speak>`,
+
+            multilang: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  <voice name="en-US-AriaNeural">
+    Hello in English.
+  </voice>
+  <voice name="es-ES-ElviraNeural">
+    Hola en español.
+  </voice>
+  <voice name="fr-FR-DeniseNeural">
+    Bonjour en français.
+  </voice>
+  <voice name="de-DE-KatjaNeural">
+    Hallo auf Deutsch.
+  </voice>
+</speak>`
+        };
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+
+        // Load example
+        function loadExample(exampleName) {
+            document.getElementById('ssmlText').value = examples[exampleName];
+            switchTab('ssml');
+            document.querySelectorAll('.tab')[1].classList.add('active');
+            showStatus(`✅ Example loaded: ${exampleName}`, 'success');
+            setTimeout(() => document.getElementById('status').classList.remove('show'), 2000);
+        }
+
+        // Show status
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status show ${type}`;
+        }
+
+        // Load voices
+        async function loadVoices() {
+            try {
+                showStatus('Loading voices...', 'info');
+                const voices = await tts.getVoices();
+
+                const select = document.getElementById('voice');
+                select.innerHTML = '';
+
+                voices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.ShortName;
+                    option.textContent = `${voice.LocalName} (${voice.Locale}) - ${voice.Gender}`;
+                    select.appendChild(option);
+
+                    if (voice.ShortName === 'en-US-AriaNeural') {
+                        option.selected = true;
+                    }
+                });
+
+                showStatus(`✅ Loaded ${voices.length} voices`, 'success');
+                setTimeout(() => document.getElementById('status').classList.remove('show'), 2000);
+            } catch (error) {
+                showStatus(`❌ Error loading voices: ${error.message}`, 'error');
+            }
+        }
+
+        // Synthesize plain text
+        async function synthesizePlainText() {
+            const text = document.getElementById('plainText').value.trim();
+            const voice = document.getElementById('voice').value;
+
+            if (!text) {
+                showStatus('⚠️ Please enter some text', 'error');
+                return;
+            }
+
+            await synthesize(text, voice, { inputType: 'text' });
+        }
+
+        // Synthesize SSML
+        async function synthesizeSSML() {
+            const ssml = document.getElementById('ssmlText').value.trim();
+
+            if (!ssml) {
+                showStatus('⚠️ Please enter SSML markup', 'error');
+                return;
+            }
+
+            await synthesize(ssml, '', { inputType: 'ssml' });
+        }
+
+        // Main synthesize function
+        async function synthesize(text, voice, options = {}) {
+            const player = document.getElementById('player');
+
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+            }
+            player.classList.remove('show');
+
+            try {
+                showStatus('🎙️ Synthesizing...', 'info');
+
+                await tts.synthesize(text, voice, options);
+                const audioData = tts.getAudioData();
+
+                const blob = new Blob([audioData], { type: 'audio/mpeg' });
+                audioUrl = URL.createObjectURL(blob);
+
+                player.src = audioUrl;
+                player.classList.add('show');
+
+                const sizeKB = (blob.size / 1024).toFixed(2);
+                showStatus(`✅ Audio generated! (${sizeKB} KB)`, 'success');
+
+                setTimeout(() => player.play(), 100);
+
+            } catch (error) {
+                console.error('Synthesis error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Load voices on startup
+        loadVoices();
+    </script>
+</body>
+
+</html>

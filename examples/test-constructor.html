@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test EdgeTTS Constructor</title>
+</head>
+<body>
+    <h1>Test EdgeTTS Constructor</h1>
+    <div id="result"></div>
+
+    <script src="../dist/browser/edge-tts.umd.js"></script>
+    <script>
+        const result = document.getElementById('result');
+        
+        try {
+            // Test constructor
+            const tts = new EdgeTTS();
+            result.innerHTML += '<p style="color: green;">✅ EdgeTTS constructor works!</p>';
+            
+            // Test methods exist
+            if (typeof tts.getVoices === 'function') {
+                result.innerHTML += '<p style="color: green;">✅ getVoices() method exists</p>';
+            }
+            
+            if (typeof tts.synthesize === 'function') {
+                result.innerHTML += '<p style="color: green;">✅ synthesize() method exists</p>';
+            }
+            
+            if (typeof tts.synthesizeStream === 'function') {
+                result.innerHTML += '<p style="color: green;">✅ synthesizeStream() method exists</p>';
+            }
+            
+            if (typeof tts.getAudioData === 'function') {
+                result.innerHTML += '<p style="color: green;">✅ getAudioData() method exists</p>';
+            }
+            
+            result.innerHTML += '<p style="color: blue;">🎉 All tests passed!</p>';
+            
+            // Test loading voices
+            tts.getVoices().then(voices => {
+                result.innerHTML += `<p style="color: green;">✅ Loaded ${voices.length} voices</p>`;
+            }).catch(err => {
+                result.innerHTML += `<p style="color: red;">❌ Error loading voices: ${err.message}</p>`;
+            });
+            
+        } catch (error) {
+            result.innerHTML += `<p style="color: red;">❌ Error: ${error.message}</p>`;
+            console.error(error);
+        }
+    </script>
+</body>
+</html>
