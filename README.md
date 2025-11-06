@@ -364,7 +364,7 @@ This library can be used directly in web browsers via CDN or ES modules.
 
 ### Complete Browser Example
 
-For a full working example with voice selection and synthesis, see [`examples/standalone.html`](examples/standalone.html).
+For a full working example with voice selection and synthesis, see [`examples/browser-standalone.html`](examples/browser-standalone.html).
 
 ## Voice Options
 
