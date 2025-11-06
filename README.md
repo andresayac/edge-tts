@@ -314,6 +314,58 @@ async function exploreVoices() {
 exploreVoices().catch(console.error);
 ```
 
+## Browser Support
+
+This library can be used directly in web browsers via CDN or ES modules.
+
+**⚠️ Important:** Currently, this library only works reliably with **Microsoft Edge browser**. We are working to extend support to other browsers. Community contributions and suggestions are welcome!
+
+### CDN Usage (UMD)
+
+```html
+<!-- Load from CDN -->
+<script src="https://unpkg.com/@andresaya/edge-tts@latest/dist/browser/edge-tts.umd.min.js"></script>
+
+<script>
+  const tts = new EdgeTTS();
+  
+  // Get available voices
+  tts.getVoices().then(voices => {
+    console.log('Available voices:', voices.length);
+  });
+  
+  // Synthesize speech
+  async function speak() {
+    await tts.synthesize("Hello from the browser!", 'en-US-AriaNeural');
+    const audioData = tts.getAudioData();
+    
+    // Play audio
+    const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    audio.play();
+  }
+</script>
+```
+
+### ES Module Import
+
+```html
+<script type="module">
+  import { EdgeTTS } from 'https://unpkg.com/@andresaya/edge-tts@latest/dist/browser/edge-tts.esm.min.js';
+  
+  const tts = new EdgeTTS();
+  
+  // Use the library
+  const voices = await tts.getVoices();
+  console.log(voices);
+</script>
+```
+
+### Complete Browser Example
+
+For a full working example with voice selection and synthesis, see [`examples/standalone.html`](examples/standalone.html).
+
 ## Voice Options
 
 ### Synthesis Parameters

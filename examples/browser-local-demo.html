@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Edge TTS Test</title>
+</head>
+<body>
+    <h1>Edge TTS Browser Test</h1>
+    
+    <input type="text" id="text" value="Hello world from Edge TTS" style="width: 400px;">
+    
+    <select id="voice">
+        <option value="en-US-JennyNeural">English (US) - Jenny</option>
+        <option value="es-MX-DaliaNeural">Spanish (MX) - Dalia</option>
+    </select>
+    
+    <button onclick="speak()">Speak</button>
+    
+    <audio id="player" controls style="width: 100%; margin-top: 20px;"></audio>
+
+    <script src="../dist/browser/edge-tts.umd.js"></script>
+    <script>
+        const tts = new EdgeTTS.EdgeTTS();
+        let audioUrl = null;
+
+        async function speak() {
+            const text = document.getElementById('text').value;
+            const voice = document.getElementById('voice').value;
+
+            if (audioUrl) URL.revokeObjectURL(audioUrl);
+
+            try {
+                console.log('Synthesizing...');
+                await tts.synthesize(text, voice);
+                
+                console.log('Getting audio...');
+                const audioData = tts.getAudioData();
+                const blob = new Blob([audioData], { type: 'audio/mpeg' });
+                audioUrl = URL.createObjectURL(blob);
+                
+                const player = document.getElementById('player');
+                player.src = audioUrl;
+                player.play();
+                
+                console.log('Done!');
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

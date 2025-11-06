@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge TTS - Standalone Example</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        textarea, select, input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        audio {
+            width: 100%;
+            margin-top: 20px;
+            display: none;
+        }
+        audio.show {
+            display: block;
+        }
+        .info-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #666;
+        }
+        .info-box strong {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Edge TTS</h1>
+        <span class="badge">Standalone - No Dependencies</span>
+        
+        <div class="form-group">
+            <label for="text">Text to speak:</label>
+            <textarea id="text" placeholder="Enter text here...">Hello! This is a standalone example of Edge Text-to-Speech without any external libraries.</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="voiceSearch">🔍 Search voices:</label>
+            <input type="text" id="voiceSearch" placeholder="Type to search...">
+        </div>
+
+        <div class="form-group">
+            <label for="voice">🗣️ Select voice:</label>
+            <select id="voice" size="8" style="height: 180px;">
+                <option>Loading voices...</option>
+            </select>
+        </div>
+
+        <div>
+            <button onclick="synthesize()" id="speakBtn">🔊 Speak</button>
+            <button onclick="loadVoices()" id="refreshBtn">🔄 Refresh Voices</button>
+        </div>
+
+        <div class="status" id="status"></div>
+        <audio id="player" controls></audio>
+
+        <div class="info-box">
+            <strong>ℹ️ How it works:</strong><br>
+            This page connects directly to Microsoft Edge TTS API using WebSocket and Fetch API.
+            All code is in this single HTML file - no external dependencies needed!
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // EDGE TTS API CONFIGURATION
+        // ============================================
+        const EDGE_TTS_CONFIG = {
+            TRUSTED_CLIENT_TOKEN: "6A5AA1D4EAFF4E9FB37E23D68491D6F4",
+            WSS_URL: "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1",
+            VOICES_URL: "https://api.msedgeservices.com/tts/cognitiveservices/voices/list",
+            VERSION_MS_GEC: "1-142.0.3595",
+            
+            // Generate random token for cookies
+            generateToken() {
+                const bytes = new Uint8Array(16);
+                crypto.getRandomValues(bytes);
+                return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+            },
+            
+            // Get headers for API requests
+            getHeaders() {
+                return {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Cookie": "MUID=" + this.generateToken()
+                };
+            }
+        };
+
+        // ============================================
+        // UTILITIES
+        // ============================================
+        
+        // Generate UUID for request IDs
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-xxxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        // Generate Sec-MS-GEC hash
+        async function generateSecMsGec(token) {
+            const now = new Date().toUTCString();
+            const date = new Date(now);
+            const ticks = Math.floor(date.getTime() / 1000) + 11644473600;
+            const rounded = ticks - (ticks % 300);
+            const windowsTicks = rounded * 10_000_000;
+
+            const encoder = new TextEncoder();
+            const data = encoder.encode(`${windowsTicks}${token}`);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+
+            return Array.from(new Uint8Array(hashBuffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('')
+                .toUpperCase();
+        }
+
+        // Create SSML from text
+        function createSSML(text, voice, pitch = 0, rate = 0, volume = 0) {
+            const pitchStr = (pitch >= 0 ? '+' : '') + pitch + 'Hz';
+            const rateStr = (rate >= 0 ? '+' : '') + rate + '%';
+            const volumeStr = (volume >= 0 ? '+' : '') + volume + '%';
+            
+            return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+                <voice name="${voice}">
+                    <prosody pitch="${pitchStr}" rate="${rateStr}" volume="${volumeStr}">
+                        ${text}
+                    </prosody>
+                </voice>
+            </speak>`;
+        }
+
+        // Build TTS config message
+        function buildConfigMessage() {
+            const timestamp = new Date().toUTCString();
+            return `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
+                `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":false,"wordBoundaryEnabled":true},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+        }
+
+        // Find pattern in Uint8Array
+        function findInArray(arr, pattern) {
+            for (let i = 0; i <= arr.length - pattern.length; i++) {
+                let match = true;
+                for (let j = 0; j < pattern.length; j++) {
+                    if (arr[i + j] !== pattern[j]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return i;
+            }
+            return -1;
+        }
+
+        // ============================================
+        // MAIN FUNCTIONS
+        // ============================================
+        
+        let allVoices = [];
+        let audioUrl = null;
+
+        // Show status message
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status show ${type}`;
+        }
+
+        // Load available voices
+        async function loadVoices() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            const select = document.getElementById('voice');
+            
+            try {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = 'Loading...';
+                showStatus('Loading voices from Edge TTS API...', 'info');
+                
+                const secMsGEC = await generateSecMsGec(EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN);
+                
+                const response = await fetch(
+                    `${EDGE_TTS_CONFIG.VOICES_URL}?Ocp-Apim-Subscription-Key=${EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${EDGE_TTS_CONFIG.VERSION_MS_GEC}`,
+                    { headers: EDGE_TTS_CONFIG.getHeaders() }
+                );
+                
+                allVoices = await response.json();
+                
+                // Sort by locale
+                allVoices.sort((a, b) => {
+                    if (a.Locale !== b.Locale) return a.Locale.localeCompare(b.Locale);
+                    return a.LocalName.localeCompare(b.LocalName);
+                });
+
+                // Populate select
+                select.innerHTML = '';
+                allVoices.forEach((voice, index) => {
+                    const option = document.createElement('option');
+                    option.value = voice.ShortName;
+                    option.textContent = `${voice.LocalName} (${voice.Locale}) - ${voice.Gender}`;
+                    select.appendChild(option);
+                    
+                    // Select first English voice
+                    if (voice.Locale.startsWith('en-US') && select.selectedIndex === -1) {
+                        option.selected = true;
+                    }
+                });
+                
+                showStatus(`✅ Loaded ${allVoices.length} voices successfully!`, 'success');
+                setTimeout(() => document.getElementById('status').classList.remove('show'), 3000);
+                
+            } catch (error) {
+                console.error('Error loading voices:', error);
+                showStatus(`❌ Error loading voices: ${error.message}`, 'error');
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh Voices';
+            }
+        }
+
+        // Synthesize text to speech
+        async function synthesize() {
+            const text = document.getElementById('text').value.trim();
+            const voice = document.getElementById('voice').value;
+            
+            if (!text) {
+                showStatus('⚠️ Please enter some text', 'error');
+                return;
+            }
+            if (!voice) {
+                showStatus('⚠️ Please select a voice', 'error');
+                return;
+            }
+
+            const speakBtn = document.getElementById('speakBtn');
+            const player = document.getElementById('player');
+            
+            if (audioUrl) URL.revokeObjectURL(audioUrl);
+            player.classList.remove('show');
+
+            try {
+                speakBtn.disabled = true;
+                speakBtn.textContent = 'Synthesizing...';
+                showStatus('🎙️ Generating speech...', 'info');
+                
+                const secMsGEC = await generateSecMsGec(EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN);
+                const reqId = generateUUID();
+                const url = `${EDGE_TTS_CONFIG.WSS_URL}?Ocp-Apim-Subscription-Key=${EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${EDGE_TTS_CONFIG.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+                
+                // Create WebSocket connection
+                const ws = new WebSocket(url);
+                const audioChunks = [];
+                
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        ws.close();
+                        reject(new Error('Synthesis timeout'));
+                    }, 30000);
+
+                    ws.onopen = () => {
+                        console.log('WebSocket connected');
+                        
+                        // Send config message
+                        ws.send(buildConfigMessage());
+                        
+                        // Send SSML
+                        const ssml = createSSML(text, voice);
+                        const timestamp = new Date().toUTCString();
+                        const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${ssml}`;
+                        ws.send(speechMessage);
+                    };
+
+                    ws.onmessage = (event) => {
+                        if (typeof event.data === 'string') {
+                            // Text message - check for turn.end
+                            if (event.data.includes('Path:turn.end')) {
+                                ws.close();
+                            }
+                        } else {
+                            // Binary message - extract audio
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                const arrayBuffer = reader.result;
+                                const uint8Array = new Uint8Array(arrayBuffer);
+                                
+                                // Find audio data after "Path:audio\r\n"
+                                const needle = new TextEncoder().encode("Path:audio\r\n");
+                                const audioStartIndex = findInArray(uint8Array, needle);
+                                
+                                if (audioStartIndex !== -1) {
+                                    const audioChunk = uint8Array.slice(audioStartIndex + needle.length);
+                                    audioChunks.push(audioChunk);
+                                }
+                            };
+                            reader.readAsArrayBuffer(event.data);
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        clearTimeout(timeout);
+                        reject(new Error('WebSocket error'));
+                    };
+
+                    ws.onclose = () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    };
+                });
+
+                // Combine all audio chunks
+                const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+                const audioData = new Uint8Array(totalLength);
+                let offset = 0;
+                for (const chunk of audioChunks) {
+                    audioData.set(chunk, offset);
+                    offset += chunk.length;
+                }
+
+                if (audioData.length === 0) {
+                    throw new Error('No audio data received');
+                }
+
+                // Create audio blob and play
+                const blob = new Blob([audioData], { type: 'audio/mpeg' });
+                audioUrl = URL.createObjectURL(blob);
+                
+                player.src = audioUrl;
+                player.classList.add('show');
+                
+                const sizeKB = (blob.size / 1024).toFixed(2);
+                showStatus(`✅ Audio generated successfully! (${sizeKB} KB)`, 'success');
+                
+                setTimeout(() => player.play(), 100);
+                
+            } catch (error) {
+                console.error('Synthesis error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                speakBtn.disabled = false;
+                speakBtn.textContent = '🔊 Speak';
+            }
+        }
+
+        // Search voices
+        document.getElementById('voiceSearch').oninput = (e) => {
+            const search = e.target.value.toLowerCase();
+            const select = document.getElementById('voice');
+            
+            const filtered = allVoices.filter(v => 
+                v.LocalName.toLowerCase().includes(search) ||
+                v.Locale.toLowerCase().includes(search) ||
+                v.Gender.toLowerCase().includes(search) ||
+                v.ShortName.toLowerCase().includes(search)
+            );
+
+            select.innerHTML = '';
+            filtered.forEach(voice => {
+                const option = document.createElement('option');
+                option.value = voice.ShortName;
+                option.textContent = `${voice.LocalName} (${voice.Locale}) - ${voice.Gender}`;
+                select.appendChild(option);
+            });
+        };
+
+        // Load voices on startup
+        loadVoices();
+
+        // Allow Ctrl+Enter to synthesize
+        document.getElementById('text').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                e.preventDefault();
+                synthesize();
+            }
+        });
+    </script>
+</body>
+</html>
