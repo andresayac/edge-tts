@@ -212,14 +212,22 @@ export class EdgeTTS {
 
             const SSML_text = this.getSSML(text, voice, options);
             
-            const timeout = setTimeout(() => {
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                reject(new Error("Synthesis timeout"));
-            }, 30000);
+            let timedOut = false;
+            let inactivityTimeout: number;
+            
+            const resetInactivityTimeout = () => {
+                clearTimeout(inactivityTimeout);
+                inactivityTimeout = window.setTimeout(() => {
+                    timedOut = true;
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.close();
+                    }
+                    reject(new Error("WebSocket inactivity timeout - no response from server"));
+                }, 30000); // 30 seconds of inactivity
+            };
 
             this.ws.onopen = () => {
+                resetInactivityTimeout(); // start the inactivity timeout
                 const message = this.buildTTSConfigMessage();
                 this.ws!.send(message);
                 const timestamp = this.nowRFC1123();
@@ -228,6 +236,7 @@ export class EdgeTTS {
             };
 
             this.ws.onmessage = (event) => {
+                resetInactivityTimeout(); // restart inactivity timeout 
                 if (typeof event.data === 'string') {
                     if (event.data.includes('Path:turn.end')) {
                         this.ws?.close();
@@ -244,7 +253,7 @@ export class EdgeTTS {
             };
 
             this.ws.onerror = (err: any) => {
-                clearTimeout(timeout);
+                clearTimeout(inactivityTimeout);
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.close();
                 }
@@ -252,8 +261,10 @@ export class EdgeTTS {
             };
 
             this.ws.onclose = () => {
-                clearTimeout(timeout);
-                resolve();
+                clearTimeout(inactivityTimeout);
+                if (!timedOut) {
+                    resolve();
+                }
             };
         });
     }
@@ -283,13 +294,27 @@ export class EdgeTTS {
             }
         };
 
-        const timeout = setTimeout(() => {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.close();
-            }
-        }, 30000);
+        let timedOut = false;
+        let inactivityTimeout: number;
+        
+        const resetInactivityTimeout = () => {
+            clearTimeout(inactivityTimeout);
+            inactivityTimeout = window.setTimeout(() => {
+                timedOut = true;
+                error = new Error("WebSocket inactivity timeout - no response from server");
+                done = true;
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.close();
+                }
+                if (notify) {
+                    notify();
+                    notify = null;
+                }
+            }, 30000); // 30 seconds of inactivity
+        };
 
         this.ws.onopen = () => {
+            resetInactivityTimeout(); // start the inactivity timeout
             const message = this.buildTTSConfigMessage();
             this.ws!.send(message);
 
@@ -299,6 +324,7 @@ export class EdgeTTS {
         };
 
         this.ws.onmessage = (event) => {
+            resetInactivityTimeout(); // restart inactivity timeout
             if (typeof event.data === 'string') {
                 if (event.data.includes('Path:turn.end')) {
                     this.ws?.close();
@@ -323,6 +349,7 @@ export class EdgeTTS {
         };
 
         this.ws.onerror = (err: any) => {
+            clearTimeout(inactivityTimeout);
             error = new Error('WebSocket error');
             done = true;
             if (notify) {
@@ -332,7 +359,7 @@ export class EdgeTTS {
         };
 
         this.ws.onclose = () => {
-            clearTimeout(timeout);
+            clearTimeout(inactivityTimeout);
             done = true;
             if (notify) {
                 notify();
