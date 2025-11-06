@@ -1,6 +1,6 @@
 {
   "name": "@andresaya/edge-tts",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Edge TTS is a package that allows access to the online text-to-speech service used by Microsoft Edge without the need for Microsoft Edge, Windows, or an API key.",
   "main": "dist/index.js",
   "browser": "dist/browser/edge-tts.esm.js",
