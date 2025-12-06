@@ -7,7 +7,7 @@ import { Command } from 'commander';
 const program = new Command();
 
 program
-  .version('1.7.1')
+  .version('1.7.2')
   .addCommand(SynthesizeCommand)
   .addCommand(VoiceListCommand);
 
