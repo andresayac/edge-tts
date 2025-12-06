@@ -1,1 +1,2 @@
-export { EdgeTTS,type Voice,type SynthesisOptions } from './services/EdgeTTS';
+export { EdgeTTS, type Voice, type SynthesisOptions, type WordBoundary } from './services/EdgeTTS';
+export { Constants } from './config/constants';
