@@ -17,7 +17,8 @@ export interface SynthesisOptions {
     pitch?: string | number;
     rate?: string | number;
     volume?: string | number;
-    inputType?: 'auto' | 'ssml' | 'text'; // Nuevo campo
+    inputType?: 'auto' | 'ssml' | 'text';
+    outputFormat?: string;
 }
 
 interface SSMLValidationResult {
@@ -52,6 +53,7 @@ function ensureBuffer(data: RawData): Buffer {
 export class EdgeTTS {
     private audio_stream: Uint8Array[] = [];
     private audio_format: string = 'mp3';
+    private output_format: string = 'audio-24khz-48kbitrate-mono-mp3';
     private word_boundaries: WordBoundary[] = [];
     private ws!: WebSocket;
 
@@ -164,6 +166,8 @@ export class EdgeTTS {
             });
 
             const SSML_text = this.getSSML(text, voice, options);
+            const outputFormat = options.outputFormat || 'audio-24khz-48kbitrate-mono-mp3';
+            this.output_format = outputFormat;
             
             let timedOut = false;
             let inactivityTimeout: ReturnType<typeof setTimeout>;
@@ -181,7 +185,7 @@ export class EdgeTTS {
 
             this.ws.on('open', () => {
                 resetInactivityTimeout(); // start the inactivity timeout
-                const message = this.buildTTSConfigMessage();
+                const message = this.buildTTSConfigMessage(outputFormat);
                 this.ws.send(message);
                 const timestamp = this.nowRFC1123();
                 const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${SSML_text}`;
@@ -334,10 +338,10 @@ export class EdgeTTS {
     }
 
 
-    private buildTTSConfigMessage(): string {
+    private buildTTSConfigMessage(outputFormat: string = 'audio-24khz-48kbitrate-mono-mp3'): string {
         const timestamp = this.nowRFC1123();
         return `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
-            `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":false,"wordBoundaryEnabled":true},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+            `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":false,"wordBoundaryEnabled":true},"outputFormat":"${outputFormat}"}}}}`;
     }
 
 
@@ -357,6 +361,8 @@ export class EdgeTTS {
         });
 
         const SSML_text = this.getSSML(text, voice, options);
+        const outputFormat = options.outputFormat || 'audio-24khz-48kbitrate-mono-mp3';
+        this.output_format = outputFormat;
 
         const queue: Uint8Array[] = [];
         let done = false;
@@ -392,7 +398,7 @@ export class EdgeTTS {
 
         this.ws.on('open', () => {
             resetInactivityTimeout(); // start the inactivity timeout
-            const message = this.buildTTSConfigMessage();
+            const message = this.buildTTSConfigMessage(outputFormat);
             this.ws.send(message);
 
             const timestamp = this.nowRFC1123();
@@ -549,17 +555,33 @@ export class EdgeTTS {
         return estimatedDuration;
     }
 
+    private getFileExtension(format: string): string {
+        if (format.includes('mp3')) return 'mp3';
+        if (format.includes('opus') && format.includes('webm')) return 'webm';
+        if (format.includes('opus') && format.includes('ogg')) return 'ogg';
+        if (format.includes('wav') || format.includes('riff')) return 'wav';
+        if (format.includes('pcm') && format.includes('raw')) return 'pcm';
+        if (format.includes('alaw')) return 'alaw';
+        if (format.includes('mulaw')) return 'mulaw';
+        if (format.includes('truesilk')) return 'silk';
+        if (format.includes('g722')) return 'g722';
+        if (format.includes('amr')) return 'amr';
+        return 'audio';
+    }
+
     getAudioInfo(): { size: number; format: string; estimatedDuration: number } {
         const buffer = this.toBuffer();
         return {
             size: buffer.length,
-            format: this.audio_format,
+            format: this.getFileExtension(this.output_format),
             estimatedDuration: this.getDuration()
         };
     }
 
-    async toFile(outputPath: string, format = this.audio_format): Promise<string> {
-        if (!format || typeof format !== 'string') format = this.audio_format;
+    async toFile(outputPath: string, format?: string): Promise<string> {
+        if (!format) {
+            format = this.getFileExtension(this.output_format);
+        }
         const audioBuffer = this.toBuffer();
         const finalPath = `${outputPath}.${format}`;
         await writeFile(finalPath, new Uint8Array(audioBuffer));
