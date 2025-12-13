@@ -13,34 +13,80 @@ export interface SynthesisOptions {
     pitch?: string | number;
     rate?: string | number;
     volume?: string | number;
-    inputType?: 'auto' | 'ssml' | 'text';
-}
-
-interface SSMLValidationResult {
-    isValid: boolean;
-    isSSML: boolean;
-    errors?: string[];
 }
 
 export class EdgeTTS {
     private audio_stream: Uint8Array[] = [];
     private ws?: WebSocket;
 
+
+    async normalizeVoices(data: any[]): Promise<Voice[]> {
+        const out = [];
+        for (const v of data || []) {
+            const short = v?.ShortName || "";
+            const locale = v?.Locale || "";
+
+            // base: remove locale prefix and Neural/NeuralHD suffix
+            let base = short.replace(/^[a-z]{2}-[A-Z]{2}-/, "");
+            base = base.replace(/NeuralHD$/, "").replace(/Neural$/, "").trim();
+
+            // VoiceType: if NeuralHD/Neural in Name or ShortName
+            const mix = `${v?.Name || ""} ${short}`;
+            const voiceType =
+                v?.VoiceType || (/NeuralHD/i.test(mix) ? "NeuralHD" : "Neural");
+
+            // LocaleName: prefer LocaleName -> LanguageName -> locale
+            const localeName = v?.LocaleName || (locale || null);
+
+            // DisplayName: prefer DisplayName -> FriendlyName -> base -> short
+            let display = v?.DisplayName || v?.FriendlyName || base || short;
+            display = display.replace(/^Microsoft\s+/i, "");
+            display = display.split(" - ")[0].trim();
+
+            display = display.replace(/\s*Online\s*\(Natural\)\s*/i, " ");
+            display = display.replace(/\s*Online\s*/i, " ");
+            display = display.replace(/\s+/g, " ").trim();
+
+            // VoiceTag parsing
+            const tag = (v?.VoiceTag && typeof v.VoiceTag === "object") ? v.VoiceTag : {};
+            const tailored = Array.isArray(tag.TailoredScenarios)
+                ? tag.TailoredScenarios
+                : (Array.isArray(tag.ContentCategories) ? tag.ContentCategories : []);
+            const personalities = Array.isArray(tag.VoicePersonalities)
+                ? tag.VoicePersonalities
+                : [];
+
+            out.push({
+                Name: short || (v?.Name || ""),
+                DisplayName: display,
+                LocalName: display,
+                ShortName: short || (v?.Name || ""),
+                Gender: v?.Gender ?? null,
+                Locale: locale || null,
+                LocaleName: localeName,
+                SecondaryLocaleList: Array.isArray(v?.SecondaryLocaleList) ? v.SecondaryLocaleList : [],
+                VoiceType: voiceType,
+                VoiceTag: {
+                    TailoredScenarios: tailored,
+                    VoicePersonalities: personalities,
+                },
+                FriendlyName: `${display} (${voiceType}) - ${localeName}`,
+            });
+        }
+
+        return out;
+    }
+
     async getVoices(): Promise<Voice[]> {
         const secMsGEC = await this.generateSecMsGec(Constants.TRUSTED_CLIENT_TOKEN);
-        
+
         const response = await fetch(
-            `${Constants.VOICES_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`,
+            `${Constants.VOICES_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`,
             { headers: Constants.getBaseHeaders() }
         );
-        
+
         const data = await response.json();
-        return data.map((voice: any) => {
-            voice.FriendlyName = voice.FriendlyName || voice.LocalName;
-            delete voice.SampleRateHertz;
-            delete voice.Status;
-            return voice;
-        });
+        return this.normalizeVoices(data.voices || []);
     }
 
     async getVoicesByLanguage(locale: string): Promise<Voice[]> {
@@ -88,38 +134,6 @@ export class EdgeTTS {
         return `${volumeValue}%`;
     }
 
-    private detectSSML(content: string): SSMLValidationResult {
-        const trimmedContent = content.trim();
-        const looksLikeSSML = /^<\?xml|^<speak/i.test(trimmedContent);
-
-        if (!looksLikeSSML) {
-            return { isValid: true, isSSML: false };
-        }
-
-        const errors: string[] = [];
-        const hasSpeakTag = /<speak\b[^>]*>[\s\S]*<\/speak>/i.test(trimmedContent);
-        const hasVoiceTag = /<voice\b[^>]*>[\s\S]*<\/voice>/i.test(trimmedContent);
-
-        if (!hasSpeakTag) {
-            throw new Error('Invalid SSML: Missing <speak> tag');
-        }
-
-        if (!hasVoiceTag) {
-            throw new Error('Invalid SSML: Missing <voice> tag');
-        }
-
-        const hasCorrectNamespace = /xmlns="http:\/\/www\.w3\.org\/2001\/10\/synthesis"/i.test(trimmedContent);
-        if (!hasCorrectNamespace && hasSpeakTag) {
-            throw new Error('Invalid SSML: Missing or incorrect namespace declaration');
-        }
-
-        return {
-            isValid: errors.length === 0,
-            isSSML: hasSpeakTag || hasVoiceTag,
-            errors: errors.length > 0 ? errors : undefined
-        };
-    }
-
     private escapeXML(text: string): string {
         return text
             .replace(/&/g, '&amp;')
@@ -129,48 +143,7 @@ export class EdgeTTS {
             .replace(/'/g, '&apos;');
     }
 
-    private getSSML(content: string, voice: string, options: SynthesisOptions = {}): string {
-        const inputType = options.inputType || 'auto';
-        let treatAsSSML = false;
-
-        if (inputType === 'ssml') {
-            treatAsSSML = true;
-        } else if (inputType === 'text') {
-            treatAsSSML = false;
-        } else { // 'auto'
-            const detection = this.detectSSML(content);
-            treatAsSSML = detection.isSSML;
-
-            if (detection.isSSML) {
-                console.log('→ Detected SSML input');
-                if (!detection.isValid) {
-                    console.warn('⚠ SSML validation warnings:', detection.errors);
-                }
-            } else {
-                console.log('→ Detected plain text input');
-            }
-        }
-
-        if (treatAsSSML) {
-            let ssml = content.trim();
-
-            if (!ssml.includes('xmlns=')) {
-                ssml = ssml.replace(
-                    /<speak([^>]*)>/i,
-                    '<speak$1 xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts">'
-                );
-            }
-
-            if (!/<voice\b[^>]*>/i.test(ssml) && voice) {
-                ssml = ssml.replace(
-                    /(<speak[^>]*>)([\s\S]*?)(<\/speak>)/i,
-                    `$1<voice name="${voice}">$2</voice>$3`
-                );
-            }
-
-            return ssml;
-        }
-
+    private getSSML(content: string, voice: string, options: SynthesisOptions = {}): string {        
         const pitch = this.validatePitch(options.pitch ?? 0);
         const rate = this.validateRate(options.rate ?? 0);
         const volume = this.validateVolume(options.volume ?? 0);
@@ -205,16 +178,15 @@ export class EdgeTTS {
         return new Promise((resolve, reject) => {
             this.audio_stream = [];
             const reqId = this.generateUUID();
-            const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
-            
-            console.log('WebSocket URL:', url);
+            const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+
             this.ws = new WebSocket(url);
 
             const SSML_text = this.getSSML(text, voice, options);
-            
+
             let timedOut = false;
             let inactivityTimeout: number;
-            
+
             const resetInactivityTimeout = () => {
                 clearTimeout(inactivityTimeout);
                 inactivityTimeout = window.setTimeout(() => {
@@ -275,7 +247,7 @@ export class EdgeTTS {
         const reqId = this.generateUUID();
         const secMsGEC = await this.generateSecMsGec(Constants.TRUSTED_CLIENT_TOKEN);
 
-        const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+        const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
         this.ws = new WebSocket(url);
 
@@ -296,7 +268,7 @@ export class EdgeTTS {
 
         let timedOut = false;
         let inactivityTimeout: number;
-        
+
         const resetInactivityTimeout = () => {
             clearTimeout(inactivityTimeout);
             inactivityTimeout = window.setTimeout(() => {
@@ -334,7 +306,7 @@ export class EdgeTTS {
                 reader.onload = () => {
                     const arrayBuffer = reader.result as ArrayBuffer;
                     const uint8Array = new Uint8Array(arrayBuffer);
-                    
+
                     const needle = new TextEncoder().encode("Path:audio\r\n");
                     const audioStartIndex = this.indexOf(uint8Array, needle);
 

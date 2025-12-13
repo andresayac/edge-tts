@@ -10,10 +10,9 @@ export const SynthesizeCommand = new Command('synthesize')
   .option('-l, --volume [volume]', 'Volume of speech', '0%')
   .option('-p, --pitch [pitch]', 'Pitch of speech', '0Hz')
   .option('-o, --output [output]', 'Output file name', `output_${Date.now()}`)
-  .option('-f, --file [file]', 'Input file (text or SSML)')
-  .option('--ssml', 'Force interpret input as SSML (auto-detect by default)')
+  .option('-f, --file [file]', 'Input file (text)')
   .action(async (options) => {
-    const { text, voice, pitch, rate, volume, output, file, ssml: forceSSML } = options;
+    const { text, voice, pitch, rate, volume, output, file } = options;
 
     if (!text && !file) {
       console.error('Error: Text (-t) or file (-f) is required');
@@ -43,7 +42,6 @@ export const SynthesizeCommand = new Command('synthesize')
       pitch, 
       rate, 
       volume,
-      inputType: forceSSML ? 'ssml' : 'auto'
     });
 
     const savedPath = await tts.toFile(output);

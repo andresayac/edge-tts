@@ -16,7 +16,6 @@
 - **Word Boundaries Metadata**: Get word boundary information with precise timestamps.
 - **Command-Line Interface**: Use a simple CLI for easy access to functionality.
 - **Easy Integration**: Modular structure allows for easy inclusion in existing projects.
-- **SSML Custom**: 🥳🥳 Edge TTS accepts raw SSML with all characteristics of Azure AI Speech.  
 
 ## Installation
 
@@ -59,7 +58,6 @@ interface SynthesisOptions {
     pitch?: string | number;       // e.g., '+20Hz' or 20
     rate?: string | number;        // e.g., '50%' or 50
     volume?: string | number;      // e.g., '90%' or 90
-    inputType?: 'auto' | 'ssml' | 'text';  // Default: 'auto'
     outputFormat?: string;         // e.g., Constants.OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3
 }
 
@@ -107,11 +105,6 @@ To synthesize speech from text:
 edge-tts synthesize -t "Hello, world!" -o hello_world_audio
 ```
 
-From file in format SSML:
-```bash
-edge-tts synthesize -f ssml.txt --ssml -o salida
-```
-
 To list available voices:
 ```bash
 edge-tts voice-list
@@ -155,49 +148,6 @@ const maleVoices = await tts.getVoicesByGender('Male');
 ```
 
 ### Text Synthesis
-
-#### Custom SSML (Advanced)
-Edge TTS accepts raw SSML so you can control prosody, styles, pauses, pronunciations, and more. You can pass SSML from code or the CLI. By default the library auto-detects if your input is SSML; you can also force the mode.
-
-More information
-[Azure AI Speech](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-structure)
-
-### SSML-builder 
-[@andresaya/ssml-builder](https://www.npmjs.com/package/@andresaya/ssml-builder) A powerful, type-safe TypeScript library for building Speech Synthesis Markup Language (SSML) documents. Create expressive text-to-speech applications with Azure Speech Service and other SSML-compliant engines.
-
-#### What the library does for you
-
-- Auto-detect / force mode: options.inputType may be 'auto' | 'ssml' | 'text' (default: auto).
-- Validation: Throws helpful errors if SSML is malformed (e.g., missing <speak>, <voice>, or the synthesis namespace).
-- Voice injection: If your SSML lacks <voice>, it injects one with the voice you passed.
-- Text wrapping: If you pass plain text (or inputType: 'text'), it wraps it in a valid SSML envelope using your rate, pitch, and volume.
-
-```js
-import { EdgeTTS } from '@andresaya/edge-tts';
-
-const tts = new EdgeTTS();
-
-const ssml = `
-<speak version="1.0"
-       xmlns="http://www.w3.org/2001/10/synthesis"
-       xmlns:mstts="https://www.w3.org/2001/mstts"
-       xml:lang="es-CO">
-  <voice name="es-CO-GonzaloNeural">
-    <mstts:express-as style="narration-professional">
-      <prosody rate="+5%" pitch="+10Hz" volume="+0%">
-        Hola, este es un ejemplo de <emphasis>SSML</emphasis>.
-        <break time="400ms" />
-        El número es <say-as interpret-as="cardinal">2025</say-as>.
-        La palabra se pronuncia
-        <phoneme alphabet="ipa" ph="ˈxola">hola</phoneme>.
-      </prosody>
-    </mstts:express-as>
-  </voice>
-</speak>`.trim();
-
-// Auto-detects SSML, or force it with inputType: 'ssml'
-await tts.synthesize(ssml, 'es-CO-GonzaloNeural', { inputType: 'ssml' });
-```
 
 #### Basic Synthesis
 ```js
@@ -472,45 +422,6 @@ This library can be used directly in web browsers via CDN or ES modules.
 </script>
 ```
 
-### Custom SSML Support in Browser
-
-The browser version supports custom SSML (Speech Synthesis Markup Language) for advanced speech control:
-
-```html
-<script src="https://unpkg.com/@andresaya/edge-tts@latest/dist/browser/edge-tts.umd.min.js"></script>
-
-<script>
-  const tts = new EdgeTTS();
-  
-  // Custom SSML with emphasis, breaks, and expression
-  const ssml = `
-    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" 
-           xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
-      <voice name="en-US-AriaNeural">
-        <mstts:express-as style="cheerful">
-          <prosody rate="+10%" pitch="+5Hz">
-            Hello! This is <emphasis>custom SSML</emphasis>.
-            <break time="500ms"/>
-            You have full control over speech synthesis!
-          </prosody>
-        </mstts:express-as>
-      </voice>
-    </speak>
-  `;
-  
-  // Synthesize with SSML
-  async function speakSSML() {
-    await tts.synthesize(ssml, '', { inputType: 'ssml' });
-    const audioData = tts.getAudioData();
-    
-    const audioBlob = new Blob([audioData], { type: 'audio/mp3' });
-    const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
-    audio.play();
-  }
-</script>
-```
-
 ### Streaming Support in Browser
 
 ```html
@@ -545,8 +456,6 @@ The browser version supports custom SSML (Speech Synthesis Markup Language) for 
 
 For a full working example with voice selection and synthesis, see [`examples/browser-standalone.html`](examples/browser-standalone.html).
 
-For advanced SSML examples, see [`examples/browser-ssml-demo.html`](examples/browser-ssml-demo.html).
-
 ## Voice Options
 
 ### Synthesis Parameters
@@ -556,7 +465,6 @@ For advanced SSML examples, see [`examples/browser-ssml-demo.html`](examples/bro
 | `pitch` | `string \| number` | `-100Hz` to `+100Hz` | Voice pitch adjustment |
 | `rate` | `string \| number` | `-100%` to `+200%` | Speech rate adjustment |
 | `volume` | `string \| number` | `-100%` to `+100%` | Volume adjustment |
-| `inputType` | `string` | `ssml` or `auto` | Determines whether the input is SSML. default(auto) |
 
 ### Parameter Examples
 ```js
@@ -570,8 +478,6 @@ For advanced SSML examples, see [`examples/browser-ssml-demo.html`](examples/bro
 // Mixed usage
 { pitch: 15, rate: '25%', volume: 85 }
 
-// send SSML 
-{ pitch: 15, rate: '25%', volume: 85, inputType: 'ssml' }
 ```
 
 ## Error Handling
