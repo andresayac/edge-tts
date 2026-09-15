@@ -595,7 +595,18 @@ export class EdgeTTS {
         if (this.audio_stream.length === 0) {
             throw new Error("No audio data available. Did you run synthesize() first?");
         }
-        return Buffer.concat(this.audio_stream);
+        // When the service cannot speak the text it answers with a single empty
+        // chunk, so the stream is not empty but the audio is. Checking the byte
+        // count rather than the chunk count is what catches that.
+        const buffer = Buffer.concat(this.audio_stream);
+        if (buffer.length === 0) {
+            throw new Error(
+                "The service returned no audio. Voices are locale specific, so a voice cannot " +
+                "read text written in another script. Check that the voice matches the language " +
+                "of the text."
+            );
+        }
+        return buffer;
     }
 
     async saveMetadata(outputPath: string): Promise<void> {

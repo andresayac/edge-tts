@@ -400,7 +400,17 @@ export class EdgeTTS {
         if (this.audio_stream.length === 0) {
             throw new Error("No audio data available");
         }
+        // When the service cannot speak the text it answers with a single empty
+        // chunk, so the stream is not empty but the audio is. Checking the byte
+        // count rather than the chunk count is what catches that.
         const totalLength = this.audio_stream.reduce((acc, chunk) => acc + chunk.length, 0);
+        if (totalLength === 0) {
+            throw new Error(
+                "The service returned no audio. Voices are locale specific, so a voice cannot " +
+                "read text written in another script. Check that the voice matches the language " +
+                "of the text."
+            );
+        }
         const result = new Uint8Array(totalLength);
         let offset = 0;
         for (const chunk of this.audio_stream) {
