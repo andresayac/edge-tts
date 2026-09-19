@@ -86,7 +86,11 @@ export class EdgeTTS {
         );
 
         const data = await response.json();
-        return this.normalizeVoices(data.voices || []);
+        // The readaloud endpoint returns a bare array, not { voices: [...] }.
+        // Reading `data.voices` unconditionally yielded zero voices even on a
+        // successful 200 response. Both shapes are accepted now.
+        const voices = Array.isArray(data) ? data : (data?.voices || []);
+        return this.normalizeVoices(voices);
     }
 
     async getVoicesByLanguage(locale: string): Promise<Voice[]> {
