@@ -4,9 +4,12 @@ export const Constants = {
     WSS_URL: 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1',
     VOICES_URL: 'https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list',
 
-    CHROMIUM_FULL_VERSION: '143.0.3650.75',
-    CHROMIUM_MAJOR_VERSION: '143',
-    VERSION_MS_GEC: '1-143.0.3650',
+    CHROMIUM_FULL_VERSION: '153.0.0.0',
+    CHROMIUM_MAJOR_VERSION: '153',
+    // NOTE: keep the `1-` prefix. The newer `2-153.0.4234.32` scheme belongs to
+    // api.msedgeservices.com, whose WebSocket rejects the `1-`-prefixed token
+    // endpoint we still use (fails the 101 handshake). Verified 2026-09-19.
+    VERSION_MS_GEC: '1-153.0.4234.32',
 
     token32() {
         const bytes = new Uint8Array(16);
@@ -20,7 +23,7 @@ export const Constants = {
 
     getBaseHeaders() {
         return {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
             'Accept-Language': 'en-US,en;q=0.9',
             'Cookie': 'MUID=' + this.token32()
@@ -33,12 +36,13 @@ export const Constants = {
         'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
         'Sec-WebSocket-Protocol': 'synthesize',
         'Sec-WebSocket-Version': '13',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.3650.75 Safari/537.36 Edg/143.0.3650.75'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0'
     },
 
     VOICE_HEADERS: {
-        'Sec-CH-UA': '" Not;A Brand";v="99", "Microsoft Edge";v="143", "Chromium";v="143"',
+        'Sec-CH-UA': '"Microsoft Edge";v="153", "Not_A Brand";v="8", "Chromium";v="153"',
         'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': '"Windows"',
         'Accept': '*/*',
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-Mode': 'cors',

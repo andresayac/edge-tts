@@ -154,9 +154,12 @@
         // ============================================
         const EDGE_TTS_CONFIG = {
             TRUSTED_CLIENT_TOKEN: "6A5AA1D4EAFF4E9FB37E23D68491D6F4",
-            WSS_URL: "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1",
-            VOICES_URL: "https://api.msedgeservices.com/tts/cognitiveservices/voices/list",
-            VERSION_MS_GEC: "1-142.0.3595",
+            // NOTE: api.msedgeservices.com returns 403 for token-only auth (it needs a
+            // newer 81-char Sec-MS-GEC we cannot reproduce). The readaloud endpoint
+            // below still works with TrustedClientToken. Verified 2026-09-19.
+            WSS_URL: "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1",
+            VOICES_URL: "https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list",
+            VERSION_MS_GEC: "1-153.0.4234.32",
             
             // Generate random token for cookies
             generateToken() {
@@ -168,7 +171,7 @@
             // Get headers for API requests
             getHeaders() {
                 return {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
                     "Accept-Encoding": "gzip, deflate, br, zstd",
                     "Accept-Language": "en-US,en;q=0.9",
                     "Cookie": "MUID=" + this.generateToken()
@@ -271,11 +274,13 @@
                 const secMsGEC = await generateSecMsGec(EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN);
                 
                 const response = await fetch(
-                    `${EDGE_TTS_CONFIG.VOICES_URL}?Ocp-Apim-Subscription-Key=${EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${EDGE_TTS_CONFIG.VERSION_MS_GEC}`,
+                    `${EDGE_TTS_CONFIG.VOICES_URL}?TrustedClientToken=${EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${EDGE_TTS_CONFIG.VERSION_MS_GEC}`,
                     { headers: EDGE_TTS_CONFIG.getHeaders() }
                 );
                 
-                allVoices = await response.json();
+                const voicesPayload = await response.json();
+                // The readaloud endpoint returns a bare array; tolerate { voices: [...] } too.
+                allVoices = Array.isArray(voicesPayload) ? voicesPayload : (voicesPayload.voices || []);
                 
                 // Sort by locale
                 allVoices.sort((a, b) => {
@@ -336,7 +341,7 @@
                 
                 const secMsGEC = await generateSecMsGec(EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN);
                 const reqId = generateUUID();
-                const url = `${EDGE_TTS_CONFIG.WSS_URL}?Ocp-Apim-Subscription-Key=${EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${EDGE_TTS_CONFIG.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+                const url = `${EDGE_TTS_CONFIG.WSS_URL}?TrustedClientToken=${EDGE_TTS_CONFIG.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${EDGE_TTS_CONFIG.VERSION_MS_GEC}&ConnectionId=${reqId}`;
                 
                 // Create WebSocket connection
                 const ws = new WebSocket(url);
