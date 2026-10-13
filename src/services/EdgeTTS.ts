@@ -225,6 +225,7 @@ export class EdgeTTS {
 
         return new Promise((resolve, reject) => {
             this.audio_stream = [];
+            this.word_boundaries = [];
             const reqId = this.generateUUID();
             const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
@@ -339,6 +340,7 @@ export class EdgeTTS {
 
     async *synthesizeStream(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): AsyncGenerator<Uint8Array, void, unknown> {
         this.audio_stream = [];
+        this.word_boundaries = [];
 
         const reqId = this.generateUUID();
         const secMsGEC = await this.generateSecMsGec(
