@@ -7,13 +7,16 @@
 
 - **Text-to-Speech**: Convert text into natural-sounding speech using Microsoft Edge's TTS capabilities.
 - **TypeScript Support**: Full TypeScript support with comprehensive type definitions included.
-- **Multiple Audio Formats**: Support for 36+ audio formats (MP3, WebM, OGG, WAV, PCM, and more).
+- **Audio Formats**: MP3 at 48 or 96 kbit/s, and WebM/Opus.
 - **Multiple Voices**: Access a variety of voices to suit your project's needs.
 - **Voice Filtering**: Filter voices by language and gender for better selection.
 - **Audio Information**: Get detailed information about generated audio (size, duration, format).
 - **Audio Export Options**: Export synthesized audio in different formats (raw, base64, or directly to a file).
 - **Streaming Support**: Stream audio data in real-time for better performance.
-- **Word Boundaries Metadata**: Get word boundary information with precise timestamps.
+- **Word and Sentence Boundaries**: Get word and sentence timings with precise timestamps.
+- **Subtitles**: Generate SRT or WebVTT subtitles, one cue per sentence.
+- **Concurrent Use**: `generate()` returns its own result, so one instance can run several syntheses at once.
+- **Configurable**: Override the endpoint, headers, timeout and voice cache without waiting for a release.
 - **Command-Line Interface**: Use a simple CLI for easy access to functionality.
 - **Easy Integration**: Modular structure allows for easy inclusion in existing projects.
 
@@ -28,6 +31,8 @@ bun add @andresaya/edge-tts
 npm install @andresaya/edge-tts
 ```
 
+Tested on Node.js 18, 20 and 24, and on Bun.
+
 ## TypeScript Support
 
 Edge TTS is written in **TypeScript** and includes full type definitions. No additional `@types` packages are needed.
@@ -37,20 +42,29 @@ Edge TTS is written in **TypeScript** and includes full type definitions. No add
 ```typescript
 import { 
     EdgeTTS, 
+    EdgeTTSError,
     Constants,
     Voice,
     SynthesisOptions,
-    WordBoundary 
+    SynthesisResult,
+    EdgeTTSOptions,
+    WordBoundary,
+    SentenceBoundary
 } from '@andresaya/edge-tts';
 
 // Voice interface
 interface Voice {
     Name: string;
     ShortName: string;
-    Gender: 'Male' | 'Female';
+    Gender: string;               // 'Male' | 'Female'
     Locale: string;
     FriendlyName: string;
     LocalName: string;
+    DisplayName?: string;
+    LocaleName?: string;
+    VoiceType?: string;
+    SecondaryLocaleList?: string[];
+    VoiceTag?: { TailoredScenarios: string[]; VoicePersonalities: string[] };
 }
 
 // Synthesis options
@@ -59,14 +73,33 @@ interface SynthesisOptions {
     rate?: string | number;        // e.g., '50%' or 50
     volume?: string | number;      // e.g., '90%' or 90
     outputFormat?: string;         // e.g., Constants.OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3
+    signal?: AbortSignal;          // cancels the synthesis
+    timeout?: number;              // inactivity timeout in ms for this call
 }
 
-// Word boundary metadata
+// Word and sentence boundary metadata (offset and duration in 100 ns ticks)
 interface WordBoundary {
     type: "WordBoundary";
     offset: number;
     duration: number;
     text: string;
+}
+
+interface SentenceBoundary {
+    type: "SentenceBoundary";
+    offset: number;
+    duration: number;
+    text: string;
+}
+
+// Returned by generate()
+interface SynthesisResult {
+    audio: Uint8Array;            // a Buffer in Node.js
+    format: string;               // file extension: 'mp3' or 'webm'
+    outputFormat: string;
+    wordBoundaries: WordBoundary[];
+    sentenceBoundaries: SentenceBoundary[];
+    duration: number;             // estimated, in seconds
 }
 ```
 
@@ -105,9 +138,19 @@ To synthesize speech from text:
 edge-tts synthesize -t "Hello, world!" -o hello_world_audio
 ```
 
-To list available voices:
+Other options:
+```bash
+# Choose the voice, read the text from a file, write subtitles too
+edge-tts synthesize -f story.txt -v es-CO-SalomeNeural -o story.mp3 --subtitles story.srt
+
+# Read from stdin, WebM/Opus output, WebVTT subtitles
+cat story.txt | edge-tts synthesize -f - --format webm-24khz-16bit-mono-opus -o story --subtitles story.vtt
+```
+
+To list available voices, optionally filtered:
 ```bash
 edge-tts voice-list
+edge-tts voice-list --locale es-CO --gender female
 ```
 
 ### Integration into Your Project
@@ -118,6 +161,23 @@ import { EdgeTTS } from '@andresaya/edge-tts';
 // Initialize the EdgeTTS service
 const tts = new EdgeTTS();
 ```
+
+### Configuration
+
+Every option is optional. The defaults come from `Constants`, so when Microsoft changes the service you can point the library at the new values yourself instead of waiting for a release.
+
+```js
+const tts = new EdgeTTS({
+    wssUrl: 'wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1',
+    voicesUrl: 'https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list',
+    secMsGecVersion: '1-155.0.4283.45',
+    headers: { 'User-Agent': '...' },   // Node.js only, added to the default headers
+    timeout: 30000,                     // ms without data before giving up
+    voicesCacheTtl: 600000,             // ms to reuse the voice list, 0 to always fetch it
+});
+```
+
+If the computer's clock is off, the service refuses the connection. In Node.js the library then reads the time from the server and retries once.
 
 ## API Reference
 
@@ -186,9 +246,26 @@ await tts.synthesize("Hello, world!", 'en-US-AriaNeural', {
 });
 ```
 
+#### Independent Results with generate()
+
+`synthesize()` keeps the audio on the instance, so two calls at the same time on one instance overwrite each other. `generate()` returns everything in its own result instead and leaves the instance alone:
+
+```js
+const [hello, bye] = await Promise.all([
+    tts.generate("Hello!", 'en-US-AriaNeural'),
+    tts.generate("Goodbye!", 'en-US-AriaNeural'),
+]);
+
+hello.audio;              // Buffer in Node.js, Uint8Array in the browser
+hello.format;             // 'mp3'
+hello.duration;           // estimated seconds
+hello.wordBoundaries;     // WordBoundary[]
+hello.sentenceBoundaries; // SentenceBoundary[]
+```
+
 #### Audio Output Formats
 
-Edge TTS supports multiple audio formats. You can specify the format using the `outputFormat` option:
+You can specify the format using the `outputFormat` option:
 
 ```js
 import { EdgeTTS, Constants } from '@andresaya/edge-tts';
@@ -206,28 +283,17 @@ await tts.synthesize("Hello!", 'en-US-AriaNeural', {
     outputFormat: Constants.OUTPUT_FORMAT.WEBM_24KHZ_16BIT_MONO_OPUS
 });
 await tts.toFile('./output/audio'); // Automatically saved as .webm
-
-// Lossless WAV
-await tts.synthesize("Hello!", 'en-US-AriaNeural', {
-    outputFormat: Constants.OUTPUT_FORMAT.RIFF_24KHZ_16BIT_MONO_PCM
-});
-await tts.toFile('./output/audio'); // Automatically saved as .wav
 ```
 
-**Available formats (all 36 tested and compatible):**
+**Available formats:**
 
-- **MP3 Formats** (Streaming): 16kHz, 24kHz, 48kHz with various bitrates (32-192 kbps)
-- **Opus Formats** (Streaming): Audio, WebM, and OGG containers
-- **WAV/PCM Formats** (Non-streaming): RIFF (8-48 kHz) and RAW variants
-- **Specialized Codecs**: AMR-WB, G.722, TrueSilk, A-law, μ-law
+| Constant | Value |
+|----------|-------|
+| `AUDIO_24KHZ_48KBITRATE_MONO_MP3` (default) | `audio-24khz-48kbitrate-mono-mp3` |
+| `AUDIO_24KHZ_96KBITRATE_MONO_MP3` | `audio-24khz-96kbitrate-mono-mp3` |
+| `WEBM_24KHZ_16BIT_MONO_OPUS` | `webm-24khz-16bit-mono-opus` |
 
-See `Constants.OUTPUT_FORMAT` for the complete list. The file extension is automatically detected based on the format.
-
-**Format recommendations:**
-- 🌐 **Web streaming**: `WEBM_24KHZ_16BIT_MONO_OPUS` or `AUDIO_24KHZ_96KBITRATE_MONO_MP3`
-- 📱 **Mobile apps**: `AUDIO_24KHZ_48KBITRATE_MONO_MP3`
-- 💾 **High quality**: `AUDIO_48KHZ_192KBITRATE_MONO_MP3` or `RIFF_48KHZ_16BIT_MONO_PCM`
-- ⚡ **Low bandwidth**: `AUDIO_16KHZ_32KBITRATE_MONO_MP3`
+The service returns no audio for other formats, such as WAV, PCM or other MP3 bitrates.
 
 
 #### Streaming Synthesis
@@ -238,6 +304,22 @@ for await (const chunk of tts.synthesizeStream("Long text to stream...", 'en-US-
     console.log(`Received chunk: ${chunk.length} bytes`);
 }
 ```
+
+Leaving the loop early with `break` closes the connection.
+
+#### Cancelling and Timeouts
+```js
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 5000);
+
+try {
+    await tts.synthesize("Hello!", 'en-US-AriaNeural', { signal: controller.signal, timeout: 10000 });
+} catch (error) {
+    if (error.name === 'AbortError') console.log('Cancelled');
+}
+```
+
+`signal` works with `synthesize()`, `synthesizeStream()` and `generate()`. `timeout` is how long to wait without receiving data, 30 seconds by default.
 
 ### Audio Information
 
@@ -277,16 +359,39 @@ const buffer = tts.toBuffer(); // Get as Buffer object
 const filePath = await tts.toFile("output_audio");
 console.log(`Audio saved to: ${filePath}`);
 // Creates: output_audio.mp3
+
+await tts.toFile("speech.mp3"); // Creates: speech.mp3 (the extension is not repeated)
 ```
 
-### Word Boundaries Metadata
+### Word and Sentence Boundaries
 
-```php
-// Get word boundaries with timestamps
-$boundaries = $tts->getWordBoundaries();
+Offsets and durations are in 100-nanosecond ticks (10,000,000 per second).
 
-// Save metadata to file
-$tts->saveMetadata('metadata.json');
+```js
+await tts.synthesize("Hello, world. How are you?", 'en-US-AriaNeural');
+
+const words = tts.getWordBoundaries();         // [{ type: 'WordBoundary', offset, duration, text: 'Hello' }, ...]
+const sentences = tts.getSentenceBoundaries(); // [{ type: 'SentenceBoundary', offset, duration, text: 'Hello, world.' }, ...]
+
+// Save word boundaries to a JSON file
+await tts.saveMetadata('metadata.json');
+```
+
+### Subtitles
+
+One cue per sentence, with the punctuation of the original text.
+
+```js
+import { writeFile } from 'fs/promises';
+import { toSRT, toVTT } from '@andresaya/edge-tts';
+
+await tts.synthesize("¿Hola? Esto es una prueba.", 'es-CO-SalomeNeural');
+await writeFile('speech.srt', tts.toSRT());
+await writeFile('speech.vtt', tts.toVTT());
+
+// From a generate() result
+const result = await tts.generate("Hello, world.", 'en-US-AriaNeural');
+await writeFile('hello.srt', toSRT(result.sentenceBoundaries));
 ```
 
 
@@ -396,7 +501,7 @@ exploreVoices().catch(console.error);
 
 This library can be used directly in web browsers via CDN or ES modules.
 
-**⚠️ Important:** In the browser, synthesis only works in **Microsoft Edge**. The speech service refuses connections whose user agent is not Edge, and a web page cannot change the user agent its browser sends. Chrome, Firefox and Safari get a 403 when synthesizing. The Node.js version is not affected.
+**⚠️ Important:** Connecting directly, synthesis only works in **Microsoft Edge**. The speech service refuses connections whose user agent is not Edge, and a web page cannot change the user agent its browser sends. Chrome, Firefox and Safari get a 403 when synthesizing. For those browsers, use a relay (see [Other Browsers](#other-browsers-relay)). The Node.js version is not affected.
 
 ### CDN Usage (UMD)
 
@@ -470,6 +575,23 @@ This library can be used directly in web browsers via CDN or ES modules.
 </script>
 ```
 
+### Other Browsers (Relay)
+
+A small relay running in Node.js connects to the service with Edge's headers and passes the messages through. Start the example relay:
+
+```bash
+node examples/relay-server.mjs   # ws://127.0.0.1:8080
+```
+
+And point the browser at it:
+
+```js
+const tts = new EdgeTTS({ wssUrl: 'ws://127.0.0.1:8080' });
+await tts.synthesize("Hello from Chrome!", 'en-US-AriaNeural');
+```
+
+The example only listens on `127.0.0.1`. If you deploy it, put it behind your own authentication or origin check so it is not open to everyone.
+
 ### Complete Browser Example
 
 For a full working example with voice selection and synthesis, see [`examples/browser-standalone.html`](examples/browser-standalone.html).
@@ -500,30 +622,38 @@ For a full working example with voice selection and synthesis, see [`examples/br
 
 ## Error Handling
 
+Errors raised by the library are `EdgeTTSError` instances with a `code`. Network errors from Node.js (such as `ECONNREFUSED`) are passed through unchanged.
+
+| `code` | When |
+|--------|------|
+| `HANDSHAKE` | The service refused the connection. `status` holds the HTTP status in Node.js (usually 403). |
+| `NETWORK` | The connection failed after it was open (browser). |
+| `TIMEOUT` | No data arrived for `timeout` ms. |
+| `NO_AUDIO` | No synthesis yet, or the service returned no audio (voice and text in different scripts, or an unsupported format). |
+| `INVALID_OPTION` | `pitch`, `rate` or `volume` is not valid. |
+| `VOICES` | The voice list request failed. `status` holds the HTTP status. |
+
+Cancelling with an `AbortSignal` rejects with the signal's reason, an `AbortError`.
+
 ```js
-import { EdgeTTS } from '@andresaya/edge-tts';
+import { EdgeTTS, EdgeTTSError } from '@andresaya/edge-tts';
 
 async function handleErrors() {
     const tts = new EdgeTTS();
     
     try {
-        await tts.synthesize("Test text", 'invalid-voice-name');
+        await tts.synthesize("Test", 'en-US-AriaNeural', { volume: -150 });
     } catch (error) {
-        console.error('Synthesis failed:', error.message);
+        if (error instanceof EdgeTTSError && error.code === 'INVALID_OPTION') {
+            console.error('Invalid parameter:', error.message);
+        }
     }
     
     try {
         // This will throw an error - no audio data
         const duration = tts.getDuration();
     } catch (error) {
-        console.error('No audio data available:', error.message);
-    }
-    
-    try {
-        // Invalid volume range
-        await tts.synthesize("Test", 'en-US-AriaNeural', { volume: -150 });
-    } catch (error) {
-        console.error('Invalid parameter:', error.message);
+        console.error(error.code, error.message); // NO_AUDIO ...
     }
 }
 ```
