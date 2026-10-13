@@ -63,3 +63,23 @@ describe('consumers of toBuffer', () => {
         expect(withStream(REAL_AUDIO).getAudioInfo().size).toBe(5);
     });
 });
+
+describe('getDuration', () => {
+    function withFormat(bytes: number, format: string): EdgeTTS {
+        const tts = withStream([new Uint8Array(bytes)]);
+        (tts as unknown as { output_format: string }).output_format = format;
+        return tts;
+    }
+
+    it('uses 48 kbit/s for the default format', () => {
+        expect(withFormat(56160, 'audio-24khz-48kbitrate-mono-mp3').getDuration()).toBeCloseTo(9.36);
+    });
+
+    it('reads the bitrate from the format name', () => {
+        expect(withFormat(112320, 'audio-24khz-96kbitrate-mono-mp3').getDuration()).toBeCloseTo(9.36);
+    });
+
+    it('falls back to 48 kbit/s when the format names no bitrate', () => {
+        expect(withFormat(6000, 'webm-24khz-16bit-mono-opus').getDuration()).toBeCloseTo(1);
+    });
+});

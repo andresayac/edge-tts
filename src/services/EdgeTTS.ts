@@ -542,10 +542,10 @@ export class EdgeTTS {
         if (this.audio_stream.length === 0) {
             throw new Error("No audio data available");
         }
-        // Estimate duration based on the size of the audio stream
+        // NOTE: MP3 is CBR; formats without a bitrate (opus) assume 48 kbit/s.
         const bufferSize = this.toBuffer().length;
-        const estimatedDuration = bufferSize / (24000 * 3); // 24000 Hz sample rate, 3 bytes per sample (16-bit stereo)
-        return estimatedDuration;
+        const kbps = Number(/(\d+)kbitrate/.exec(this.output_format)?.[1] ?? 48);
+        return (bufferSize * 8) / (kbps * 1000);
     }
 
     private getFileExtension(format: string): string {
