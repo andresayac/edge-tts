@@ -136,6 +136,11 @@ export class EdgeTTS {
                     res.on("end", () => {
                         const body = Buffer.concat(chunks as Uint8Array[]).toString("utf8");
 
+                        if (res.statusCode !== 200) {
+                            reject(new Error(`Voice list request failed with status ${res.statusCode}`));
+                            return;
+                        }
+
                         try {
                             const parsed = JSON.parse(body);
 
@@ -146,7 +151,7 @@ export class EdgeTTS {
 
                             resolve(Array.isArray(voices) ? voices : []);
                         } catch (e: any) {
-                            reject(new Error("JSON inválido: " + (e?.message || String(e))));
+                            reject(new Error("Invalid voice list JSON: " + (e?.message || String(e))));
                         }
                     });
                 }
@@ -213,7 +218,7 @@ export class EdgeTTS {
         }
 
         if (volumeValue < -100 || volumeValue > 100) {
-            throw new Error("Volume cannot be negative. Expected a value from -100% to 100% (or more).");
+            throw new Error("Invalid volume. Expected a value from -100% to 100%.");
         }
 
         return `${volumeValue}%`;

@@ -7,7 +7,7 @@ export const VoiceListCommand = new Command('voice-list')
     const tts = new EdgeTTS();
     const voices = await tts.getVoices();
 
-    console.log('Lista de voces disponibles:');
+    console.log('Available voices:');
     voices.forEach((voice) => {
       console.log(` - ${voice.ShortName}`);
     });
