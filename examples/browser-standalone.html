@@ -279,6 +279,7 @@
                 const voicesPayload = await response.json();
                 // The readaloud endpoint returns a bare array; tolerate { voices: [...] } too.
                 allVoices = Array.isArray(voicesPayload) ? voicesPayload : (voicesPayload.voices || []);
+                allVoices.forEach(voice => { voice.LocalName = voice.LocalName || voice.ShortName; });
                 
                 // Sort by locale
                 allVoices.sort((a, b) => {
