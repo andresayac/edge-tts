@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.1
 
 ### Fixed
 - An unsupported voice or output format rejects with `REFUSED` and the reason the service gives, such as "Unsupported voice xx-XX-NobodyNeural.", instead of resolving and failing later with "No audio data available".
