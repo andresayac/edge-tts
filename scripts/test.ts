@@ -200,7 +200,7 @@ async function testParameterValidation(tts: EdgeTTS) {
     { params: { volume: 0 }, description: 'Volume zero', shouldPass: true },
     { params: { volume: 100 }, description: 'Volume max', shouldPass: true },
     { params: { volume: -100 }, description: 'Volume min', shouldPass: true },
-    { params: { volume: 150 }, description: 'Volume above 100%', shouldPass: true },
+    { params: { volume: 150 }, description: 'Volume above 100%', shouldPass: false },
     { params: { volume: -101 }, description: 'Volume below -100%', shouldPass: false },
 
     // Combined tests
