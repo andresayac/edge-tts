@@ -396,7 +396,7 @@ exploreVoices().catch(console.error);
 
 This library can be used directly in web browsers via CDN or ES modules.
 
-**⚠️ Important:** Currently, this library only works reliably with **Microsoft Edge browser**. We are working to extend support to other browsers. Community contributions and suggestions are welcome!
+**⚠️ Important:** In the browser, synthesis only works in **Microsoft Edge**. The speech service refuses connections whose user agent is not Edge, and a web page cannot change the user agent its browser sends. Chrome, Firefox and Safari get a 403 when synthesizing. The Node.js version is not affected.
 
 ### CDN Usage (UMD)
 

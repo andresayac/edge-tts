@@ -119,6 +119,7 @@ export class EdgeTTS {
 
         const headers = {
             ...Constants.getBaseHeaders(),
+            ...Constants.VOICE_HEADERS,
             "Accept-Encoding": "identity", // evita gzip/br/zstd
         };
 
@@ -225,10 +226,10 @@ export class EdgeTTS {
         return new Promise((resolve, reject) => {
             this.audio_stream = [];
             const reqId = this.generateUUID();
-            const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+            const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
             this.ws = new WebSocket(url, {
-                headers: Constants.getBaseHeaders()
+                headers: { ...Constants.getBaseHeaders(), ...Constants.WSS_HEADERS }
             });
 
             const SSML_text = this.getSSML(text, voice, options);
@@ -344,10 +345,10 @@ export class EdgeTTS {
             Constants.TRUSTED_CLIENT_TOKEN,
         );
 
-        const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
+        const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
         this.ws = new WebSocket(url, {
-            headers: Constants.getBaseHeaders()
+            headers: { ...Constants.getBaseHeaders(), ...Constants.WSS_HEADERS }
         });
 
         const SSML_text = this.getSSML(text, voice, options);
