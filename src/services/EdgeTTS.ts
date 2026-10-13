@@ -111,8 +111,6 @@ export class EdgeTTS {
     async getVoices(): Promise<Voice[]> {
         const secMsGEC = await this.generateSecMsGec(Constants.TRUSTED_CLIENT_TOKEN);
 
-        const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-
         const url =
             `${Constants.VOICES_URL}` +
             `?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}` +
@@ -127,7 +125,7 @@ export class EdgeTTS {
         const voicesRaw = await new Promise<any[]>((resolve, reject) => {
             const req = https.request(
                 url,
-                { method: "GET", headers, agent: httpsAgent },
+                { method: "GET", headers },
                 (res) => {
                     const chunks: Buffer[] = [];
 
@@ -230,8 +228,7 @@ export class EdgeTTS {
             const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
             this.ws = new WebSocket(url, {
-                headers: Constants.getBaseHeaders(),
-                rejectUnauthorized: false
+                headers: Constants.getBaseHeaders()
             });
 
             const SSML_text = this.getSSML(text, voice, options);
@@ -350,8 +347,7 @@ export class EdgeTTS {
         const url = `${Constants.WSS_URL}?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
         this.ws = new WebSocket(url, {
-            headers: Constants.getBaseHeaders(),
-            rejectUnauthorized: false
+            headers: Constants.getBaseHeaders()
         });
 
         const SSML_text = this.getSSML(text, voice, options);
