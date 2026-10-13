@@ -343,6 +343,7 @@
                 
                 // Create WebSocket connection
                 const ws = new WebSocket(url);
+                ws.binaryType = 'arraybuffer';
                 const audioChunks = [];
                 
                 await new Promise((resolve, reject) => {
@@ -372,21 +373,16 @@
                             }
                         } else {
                             // Binary message - extract audio
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                                const arrayBuffer = reader.result;
-                                const uint8Array = new Uint8Array(arrayBuffer);
-                                
-                                // Find audio data after "Path:audio\r\n"
-                                const needle = new TextEncoder().encode("Path:audio\r\n");
-                                const audioStartIndex = findInArray(uint8Array, needle);
-                                
-                                if (audioStartIndex !== -1) {
-                                    const audioChunk = uint8Array.slice(audioStartIndex + needle.length);
-                                    audioChunks.push(audioChunk);
-                                }
-                            };
-                            reader.readAsArrayBuffer(event.data);
+                            const uint8Array = new Uint8Array(event.data);
+
+                            // Find audio data after "Path:audio\r\n"
+                            const needle = new TextEncoder().encode("Path:audio\r\n");
+                            const audioStartIndex = findInArray(uint8Array, needle);
+
+                            if (audioStartIndex !== -1) {
+                                const audioChunk = uint8Array.slice(audioStartIndex + needle.length);
+                                audioChunks.push(audioChunk);
+                            }
                         }
                     };
 

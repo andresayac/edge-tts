@@ -185,6 +185,7 @@ export class EdgeTTS {
             const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
             this.ws = new WebSocket(url);
+            this.ws.binaryType = 'arraybuffer';
 
             const SSML_text = this.getSSML(text, voice, options);
 
@@ -218,13 +219,7 @@ export class EdgeTTS {
                         this.ws?.close();
                     }
                 } else {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const arrayBuffer = reader.result as ArrayBuffer;
-                        const uint8Array = new Uint8Array(arrayBuffer);
-                        this.processAudioData(uint8Array);
-                    };
-                    reader.readAsArrayBuffer(event.data);
+                    this.processAudioData(new Uint8Array(event.data));
                 }
             };
 
@@ -254,6 +249,7 @@ export class EdgeTTS {
         const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
 
         this.ws = new WebSocket(url);
+        this.ws.binaryType = 'arraybuffer';
 
         const SSML_text = this.getSSML(text, voice, options);
 
@@ -306,21 +302,16 @@ export class EdgeTTS {
                     this.ws?.close();
                 }
             } else {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const arrayBuffer = reader.result as ArrayBuffer;
-                    const uint8Array = new Uint8Array(arrayBuffer);
+                const uint8Array = new Uint8Array(event.data);
 
-                    const needle = new TextEncoder().encode("Path:audio\r\n");
-                    const audioStartIndex = this.indexOf(uint8Array, needle);
+                const needle = new TextEncoder().encode("Path:audio\r\n");
+                const audioStartIndex = this.indexOf(uint8Array, needle);
 
-                    if (audioStartIndex !== -1) {
-                        const audioChunk = uint8Array.slice(audioStartIndex + needle.length);
-                        this.audio_stream.push(audioChunk);
-                        push(audioChunk);
-                    }
-                };
-                reader.readAsArrayBuffer(event.data);
+                if (audioStartIndex !== -1) {
+                    const audioChunk = uint8Array.slice(audioStartIndex + needle.length);
+                    this.audio_stream.push(audioChunk);
+                    push(audioChunk);
+                }
             }
         };
 
