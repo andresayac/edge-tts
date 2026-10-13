@@ -1,3 +1,5 @@
+import { webCrypto } from '../core/crypto';
+
 export const Constants = {
     TRUSTED_CLIENT_TOKEN: '6A5AA1D4EAFF4E9FB37E23D68491D6F4',
     BASE_URL: 'https://speech.platform.bing.com/consumer/speech/synthesize/readaloud',
@@ -11,7 +13,7 @@ export const Constants = {
 
     token32() {
         const bytes = new Uint8Array(16);
-        crypto.getRandomValues(bytes);
+        webCrypto().getRandomValues(bytes);
 
         return Array.from(bytes)
             .map(b => b.toString(16).padStart(2, '0'))

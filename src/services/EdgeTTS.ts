@@ -1,130 +1,58 @@
-import WebSocket, { type RawData } from 'ws';
+import WebSocket from 'ws';
 import { Constants } from '../config/constants';
 import { writeFile } from 'fs/promises';
 import { Buffer } from 'buffer';
+import http from 'http';
 import https from 'https';
+import { webcrypto } from 'crypto';
+import { EdgeTTSCore, noAudioMessage } from '../core/base';
+import { adjustClock, now } from '../core/clock';
+import { setWebCrypto, type WebCrypto } from '../core/crypto';
+import { EdgeTTSError } from '../core/errors';
+import { buildSSML, estimateDuration, fileExtension, generateSecMsGec } from '../core/protocol';
+import type { SocketLike } from '../core/session';
+import type { EdgeTTSOptions, SynthesisOptions, SynthesisResult } from '../core/types';
 
-export interface Voice {
-    Name: string;
-    ShortName: string;
-    Gender: string;
-    Locale: string;
-    FriendlyName: string;
-    LocalName: string;
-}
+export type { Voice, SynthesisOptions, WordBoundary } from '../core/types';
 
-export interface SynthesisOptions {
-    pitch?: string | number;
-    rate?: string | number;
-    volume?: string | number;
-    outputFormat?: string;
-}
+// NOTE: Node 18 has no global crypto.
+if (!(globalThis as { crypto?: unknown }).crypto) setWebCrypto(webcrypto as unknown as WebCrypto);
 
-export interface WordBoundary {
-    type: "WordBoundary";
-    offset: number;
-    duration: number;
-    text: string;
-}
-
-function ensureBuffer(data: RawData): Buffer {
-    if (Buffer.isBuffer(data)) {
-        return data;
-    }
-    if (data instanceof ArrayBuffer) {
-        return Buffer.from(data);
-    }
-    if (Array.isArray(data)) {
-        return Buffer.concat(data as unknown as Uint8Array[]);
-    }
-    if (typeof data === 'string') {
-        return Buffer.from(data, 'utf-8');
-    }
-    throw new Error(`Unsupported RawData type: ${typeof data}`);
-}
-
-export class EdgeTTS {
-    private audio_stream: Uint8Array[] = [];
-    private audio_format: string = 'mp3';
-    private output_format: string = 'audio-24khz-48kbitrate-mono-mp3';
-    private word_boundaries: WordBoundary[] = [];
+export class EdgeTTS extends EdgeTTSCore {
+    protected readonly defaultVoice = 'en-US-AnaNeural';
     private ws!: WebSocket;
 
-    async normalizeVoices(data: any[]): Promise<Voice[]> {
-        const out = [];
-        for (const v of data || []) {
-            const short = v?.ShortName || "";
-            const locale = v?.Locale || "";
-
-            // base: remove locale prefix and Neural/NeuralHD suffix
-            let base = short.replace(/^[a-z]{2}-[A-Z]{2}-/, "");
-            base = base.replace(/NeuralHD$/, "").replace(/Neural$/, "").trim();
-
-            // VoiceType: if NeuralHD/Neural in Name or ShortName
-            const mix = `${v?.Name || ""} ${short}`;
-            const voiceType =
-                v?.VoiceType || (/NeuralHD/i.test(mix) ? "NeuralHD" : "Neural");
-
-            // LocaleName: prefer LocaleName -> LanguageName -> locale
-            const localeName = v?.LocaleName || (locale || null);
-
-            // DisplayName: prefer DisplayName -> FriendlyName -> base -> short
-            let display = v?.DisplayName || v?.FriendlyName || base || short;
-            display = display.replace(/^Microsoft\s+/i, "");
-            display = display.split(" - ")[0].trim();
-
-            display = display.replace(/\s*Online\s*\(Natural\)\s*/i, " ");
-            display = display.replace(/\s*Online\s*/i, " ");
-            display = display.replace(/\s+/g, " ").trim();
-
-            // VoiceTag parsing
-            const tag = (v?.VoiceTag && typeof v.VoiceTag === "object") ? v.VoiceTag : {};
-            const tailored = Array.isArray(tag.TailoredScenarios)
-                ? tag.TailoredScenarios
-                : (Array.isArray(tag.ContentCategories) ? tag.ContentCategories : []);
-            const personalities = Array.isArray(tag.VoicePersonalities)
-                ? tag.VoicePersonalities
-                : [];
-
-            out.push({
-                Name: short || (v?.Name || ""),
-                DisplayName: display,
-                LocalName: display,
-                ShortName: short || (v?.Name || ""),
-                Gender: v?.Gender ?? null,
-                Locale: locale || null,
-                LocaleName: localeName,
-                SecondaryLocaleList: Array.isArray(v?.SecondaryLocaleList) ? v.SecondaryLocaleList : [],
-                VoiceType: voiceType,
-                VoiceTag: {
-                    TailoredScenarios: tailored,
-                    VoicePersonalities: personalities,
-                },
-                FriendlyName: `${display} (${voiceType}) - ${localeName}`,
-            });
-        }
-
-        return out;
+    constructor(options: EdgeTTSOptions = {}) {
+        super(options);
     }
 
+    generateSecMsGec = async (trustedClientToken: string): Promise<string> => {
+        return generateSecMsGec(trustedClientToken, now());
+    }
 
-    async getVoices(): Promise<Voice[]> {
-        const secMsGEC = await this.generateSecMsGec(Constants.TRUSTED_CLIENT_TOKEN);
+    async generate(text: string, voice?: string, options?: SynthesisOptions): Promise<SynthesisResult & { audio: Buffer }> {
+        const result = await super.generate(text, voice, options);
+        return { ...result, audio: Buffer.from(result.audio.buffer, result.audio.byteOffset, result.audio.byteLength) };
+    }
 
-        const url =
-            `${Constants.VOICES_URL}` +
-            `?TrustedClientToken=${Constants.TRUSTED_CLIENT_TOKEN}` +
-            `&Sec-MS-GEC=${secMsGEC}` +
-            `&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}`;
+    protected openSocket(url: string): SocketLike {
+        this.ws = new WebSocket(url, {
+            headers: { ...Constants.getBaseHeaders(), ...Constants.WSS_HEADERS, ...this.options.headers }
+        });
+        return this.ws as unknown as SocketLike;
+    }
 
+    protected requestVoices(url: string): Promise<any[]> {
         const headers = {
             ...Constants.getBaseHeaders(),
             ...Constants.VOICE_HEADERS,
+            ...this.options.headers,
             "Accept-Encoding": "identity", // evita gzip/br/zstd
         };
+        const client = url.startsWith('http:') ? http : https;
 
-        const voicesRaw = await new Promise<any[]>((resolve, reject) => {
-            const req = https.request(
+        return new Promise<any[]>((resolve, reject) => {
+            const req = client.request(
                 url,
                 { method: "GET", headers },
                 (res) => {
@@ -137,7 +65,7 @@ export class EdgeTTS {
                         const body = Buffer.concat(chunks as Uint8Array[]).toString("utf8");
 
                         if (res.statusCode !== 200) {
-                            reject(new Error(`Voice list request failed with status ${res.statusCode}`));
+                            reject(new EdgeTTSError(`Voice list request failed with status ${res.statusCode}`, 'VOICES', { status: res.statusCode }));
                             return;
                         }
 
@@ -151,7 +79,7 @@ export class EdgeTTS {
 
                             resolve(Array.isArray(voices) ? voices : []);
                         } catch (e: any) {
-                            reject(new Error("Invalid voice list JSON: " + (e?.message || String(e))));
+                            reject(new EdgeTTSError("Invalid voice list JSON: " + (e?.message || String(e)), 'VOICES', { cause: e }));
                         }
                     });
                 }
@@ -160,26 +88,46 @@ export class EdgeTTS {
             req.on("error", reject);
             req.end();
         });
-
-        return this.normalizeVoices(voicesRaw);
     }
 
-
-    async getVoicesByLanguage(locale: string): Promise<Voice[]> {
-        const voices = await this.getVoices();
-        return voices.filter(voice => voice.Locale.startsWith(locale));
+    protected buildSSML(text: string, voice: string, options: SynthesisOptions): string {
+        const pitch = this.validatePitch(options.pitch ?? 0);
+        const rate = this.validateRate(options.rate ?? 0);
+        const volume = this.validateVolume(options.volume ?? 0);
+        return buildSSML(text, voice, pitch, rate, volume);
     }
 
-    async getVoicesByGender(gender: 'Male' | 'Female'): Promise<Voice[]> {
-        const voices = await this.getVoices();
-        return voices.filter(voice => voice.Gender === gender);
+    protected timestamp(): string {
+        return this.nowRFC1123();
     }
 
-    private generateUUID(): string {
-        return 'xxxxxxxx-xxxx-xxxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
+    protected socketError(event: unknown, opened: boolean): Error {
+        const { error, message } = event as { error?: unknown; message?: string };
+        const cause = error instanceof Error ? error : new Error(message || 'WebSocket error');
+        if (opened || (cause as { code?: unknown }).code !== undefined) return cause;
+
+        const status = /Unexpected server response: (\d{3})/.exec(cause.message)?.[1];
+        return new EdgeTTSError(cause.message, 'HANDSHAKE', { status: status ? Number(status) : undefined, cause });
+    }
+
+    protected async recoverHandshake(): Promise<boolean> {
+        const serverTime = await this.serverTime();
+        return serverTime !== undefined && adjustClock(serverTime);
+    }
+
+    private serverTime(): Promise<number | undefined> {
+        const origin = new URL((this.options.wssUrl ?? Constants.WSS_URL).replace(/^ws/, 'http')).origin + '/';
+        const client = origin.startsWith('http:') ? http : https;
+
+        return new Promise(resolve => {
+            const req = client.request(origin, { method: 'HEAD', timeout: 10_000 }, (res) => {
+                res.resume();
+                const date = Date.parse(res.headers.date ?? '');
+                resolve(Number.isNaN(date) ? undefined : date);
+            });
+            req.on('timeout', () => req.destroy());
+            req.on('error', () => resolve(undefined));
+            req.end();
         });
     }
 
@@ -188,7 +136,7 @@ export class EdgeTTS {
             return (pitch >= 0 ? `+${pitch}Hz` : `${pitch}Hz`);
         }
         if (!/^[+-]?\d{1,3}(?:\.\d+)?Hz$/.test(pitch)) {
-            throw new Error("Invalid pitch format. Expected format: '-100Hz to +100Hz' or a number.");
+            throw new EdgeTTSError("Invalid pitch format. Expected format: '-100Hz to +100Hz' or a number.", 'INVALID_OPTION');
         }
         return pitch;
     }
@@ -197,7 +145,7 @@ export class EdgeTTS {
         let rateValue: number;
         if (typeof rate === 'string') {
             rateValue = parseFloat(rate.replace('%', ''));
-            if (isNaN(rateValue)) throw new Error("Invalid rate format.");
+            if (isNaN(rateValue)) throw new EdgeTTSError("Invalid rate format.", 'INVALID_OPTION');
         } else {
             rateValue = rate;
         }
@@ -212,105 +160,16 @@ export class EdgeTTS {
         let volumeValue: number;
         if (typeof volume === 'string') {
             volumeValue = parseInt(volume.replace('%', ''), 10);
-            if (isNaN(volumeValue)) throw new Error("Invalid volume format.");
+            if (isNaN(volumeValue)) throw new EdgeTTSError("Invalid volume format.", 'INVALID_OPTION');
         } else {
             volumeValue = volume;
         }
 
         if (volumeValue < -100 || volumeValue > 100) {
-            throw new Error("Invalid volume. Expected a value from -100% to 100%.");
+            throw new EdgeTTSError("Invalid volume. Expected a value from -100% to 100%.", 'INVALID_OPTION');
         }
 
         return `${volumeValue}%`;
-    }
-    async synthesize(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): Promise<void> {
-        const secMsGEC = await this.generateSecMsGec(
-            Constants.TRUSTED_CLIENT_TOKEN,
-        )
-
-        return new Promise((resolve, reject) => {
-            this.audio_stream = [];
-            this.word_boundaries = [];
-            const reqId = this.generateUUID();
-            const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
-
-            this.ws = new WebSocket(url, {
-                headers: { ...Constants.getBaseHeaders(), ...Constants.WSS_HEADERS }
-            });
-
-            const SSML_text = this.getSSML(text, voice, options);
-            const outputFormat = options.outputFormat || 'audio-24khz-48kbitrate-mono-mp3';
-            this.output_format = outputFormat;
-
-            let timedOut = false;
-            let inactivityTimeout: ReturnType<typeof setTimeout>;
-
-            const resetInactivityTimeout = () => {
-                clearTimeout(inactivityTimeout);
-                inactivityTimeout = setTimeout(() => {
-                    timedOut = true;
-                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                        this.ws.close();
-                    }
-                    reject(new Error("WebSocket inactivity timeout - no response from server"));
-                }, 30000); // 30 seconds of inactivity
-            };
-
-            this.ws.on('open', () => {
-                resetInactivityTimeout(); // start the inactivity timeout
-                const message = this.buildTTSConfigMessage(outputFormat);
-                this.ws.send(message);
-                const timestamp = this.nowRFC1123();
-                const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${SSML_text}`;
-                this.ws.send(speechMessage);
-            });
-
-            this.ws.on('message', (data: RawData) => {
-                resetInactivityTimeout(); // restart inactivity timeout
-                this.processAudioData(data);
-            });
-
-            this.ws.on('error', (err: any) => {
-                clearTimeout(inactivityTimeout);
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                reject(err);
-            });
-
-            this.ws.on('close', () => {
-                clearTimeout(inactivityTimeout);
-                if (!timedOut) {
-                    resolve();
-                }
-            });
-        });
-    }
-
-    private escapeXML(text: string): string {
-        return text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;');
-    }
-
-    private getSSML(content: string, voice: string, options: SynthesisOptions = {}): string {
-        const pitch = this.validatePitch(options.pitch ?? 0);
-        const rate = this.validateRate(options.rate ?? 0);
-        const volume = this.validateVolume(options.volume ?? 0);
-
-        const escapedText = this.escapeXML(content);
-
-        return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
-                    <voice name="${voice}">
-                        <prosody pitch="${pitch}" rate="${rate}" volume="${volume}">
-                            ${escapedText}
-                        </prosody>
-                    </voice>
-                </speak>
-        `;
     }
 
     private nowRFC1123(timeZone = 'UTC'): string {
@@ -331,257 +190,30 @@ export class EdgeTTS {
         return now.toLocaleString('en-US', options);
     }
 
-    private parseRFC1123(rfcStr: string): Date {
-        return new Date(rfcStr);
-    }
-
-
-    private buildTTSConfigMessage(outputFormat: string = 'audio-24khz-48kbitrate-mono-mp3'): string {
-        const timestamp = this.nowRFC1123();
-        return `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
-            `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":false,"wordBoundaryEnabled":true},"outputFormat":"${outputFormat}"}}}}`;
-    }
-
-
-    async *synthesizeStream(text: string, voice: string = 'en-US-AnaNeural', options: SynthesisOptions = {}): AsyncGenerator<Uint8Array, void, unknown> {
-        this.audio_stream = [];
-        this.word_boundaries = [];
-
-        const reqId = this.generateUUID();
-        const secMsGEC = await this.generateSecMsGec(
-            Constants.TRUSTED_CLIENT_TOKEN,
-        );
-
-        const url = `${Constants.WSS_URL}?Ocp-Apim-Subscription-Key=${Constants.TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${secMsGEC}&Sec-MS-GEC-Version=${Constants.VERSION_MS_GEC}&ConnectionId=${reqId}`;
-
-        this.ws = new WebSocket(url, {
-            headers: { ...Constants.getBaseHeaders(), ...Constants.WSS_HEADERS }
-        });
-
-        const SSML_text = this.getSSML(text, voice, options);
-        const outputFormat = options.outputFormat || 'audio-24khz-48kbitrate-mono-mp3';
-        this.output_format = outputFormat;
-
-        const queue: Uint8Array[] = [];
-        let done = false;
-        let error: Error | null = null;
-        let notify: (() => void) | null = null;
-
-        const push = (chunk: Uint8Array) => {
-            queue.push(chunk);
-            if (notify) {
-                notify();
-                notify = null;
-            }
-        };
-
-        let timedOut = false;
-        let inactivityTimeout: ReturnType<typeof setTimeout>;
-
-        const resetInactivityTimeout = () => {
-            clearTimeout(inactivityTimeout);
-            inactivityTimeout = setTimeout(() => {
-                timedOut = true;
-                error = new Error("WebSocket inactivity timeout - no response from server");
-                done = true;
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.close();
-                }
-                if (notify) {
-                    notify();
-                    notify = null;
-                }
-            }, 30000); // 30 seconds of inactivity
-        };
-
-        this.ws.on('open', () => {
-            resetInactivityTimeout(); // start the inactivity timeout
-            const message = this.buildTTSConfigMessage(outputFormat);
-            this.ws.send(message);
-
-            const timestamp = this.nowRFC1123();
-            const speechMessage = `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${SSML_text}`;
-            this.ws.send(speechMessage);
-        });
-
-        this.ws.on('message', (data: RawData) => {
-            resetInactivityTimeout(); // restart inactivity timeout
-            const buffer = ensureBuffer(data);
-            const needle = Buffer.from('Path:audio\r\n');
-
-            const audioStartIndex = buffer.indexOf(new Uint8Array(needle));
-
-            if (audioStartIndex !== -1) {
-                const audioChunk = buffer.subarray(audioStartIndex + needle.length);
-                const chunk = new Uint8Array(audioChunk);
-                this.audio_stream.push(chunk);
-                push(chunk);
-            }
-
-            if (buffer.toString().includes("Path:audio.metadata")) {
-                const metadataStart = buffer.indexOf("\r\n\r\n") + 4;
-                const metadataJson = buffer.toString().substring(metadataStart);
-                const meta = this.parseMetadata(metadataJson);
-                if (meta !== null) {
-                    this.word_boundaries.push(meta);
-                }
-                return;
-            }
-
-            if (buffer.toString().includes('Path:turn.end')) {
-                this.ws?.close();
-            }
-        });
-
-        this.ws.on('error', (err: any) => {
-            clearTimeout(inactivityTimeout);
-            error = err;
-            done = true;
-            if (notify) {
-                notify();
-                notify = null;
-            }
-        });
-
-        this.ws.on('close', () => {
-            clearTimeout(inactivityTimeout);
-            done = true;
-            if (notify) {
-                notify();
-                notify = null;
-            }
-        });
-
-        while (!done || queue.length > 0) {
-            if (queue.length === 0) {
-                await new Promise<void>(resolve => (notify = resolve));
-                continue;
-            }
-            const chunk = queue.shift();
-            if (chunk) {
-                yield chunk;
-            }
-        }
-
-        if (error) {
-            throw error;
-        }
-    }
-
-    private processAudioData(data: RawData): void {
-        const buffer = ensureBuffer(data);
-        const needle = Buffer.from("Path:audio\r\n");
-
-        const audioStartIndex = buffer.indexOf(new Uint8Array(needle));
-
-        if (audioStartIndex !== -1) {
-            const audioChunk = buffer.subarray(audioStartIndex + needle.length);
-            this.audio_stream.push(new Uint8Array(audioChunk));
-        }
-
-        if (buffer.toString().includes("Path:audio.metadata")) {
-            const metadataStart = buffer.indexOf("\r\n\r\n") + 4;
-            const metadataJson = buffer.toString().substring(metadataStart);
-            const meta = this.parseMetadata(metadataJson);
-            if (meta !== null) {
-                this.word_boundaries.push(meta);
-            }
-            return;
-        }
-
-        if (buffer.toString().includes("Path:turn.end")) {
-            this.ws?.close();
-        }
-    }
-
-    private parseMetadata(data: string, offsetCompensation: number = 0): WordBoundary | null {
-        let metadata;
-
-        try {
-            metadata = JSON.parse(data);
-        } catch {
-            return null;
-        }
-
-        if (!metadata.Metadata) {
-            return null;
-        }
-
-        for (const metaObj of metadata.Metadata) {
-            if (metaObj.Type === "WordBoundary") {
-                const currentOffset = metaObj.Data.Offset + offsetCompensation;
-                const currentDuration = metaObj.Data.Duration;
-
-                return {
-                    type: "WordBoundary",
-                    offset: currentOffset,
-                    duration: currentDuration,
-                    text: metaObj.Data.text?.Text,
-                };
-            }
-        }
-
-        return null;
-    }
-
-    generateSecMsGec = async (trustedClientToken: string): Promise<string> => {
-        const now = this.nowRFC1123();
-
-        const fixedDate = this.parseRFC1123(now);
-
-        const ticks = Math.floor(fixedDate.getTime() / 1000) + 11644473600;
-        const rounded = ticks - (ticks % 300);
-        const windowsTicks = rounded * 10_000_000;
-
-        const encoder = new TextEncoder()
-        const data = encoder.encode(`${windowsTicks}${trustedClientToken}`)
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-
-        return Array.from(new Uint8Array(hashBuffer))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('')
-            .toUpperCase()
-    }
-
     getDuration(): number {
         if (this.audio_stream.length === 0) {
-            throw new Error("No audio data available");
+            throw new EdgeTTSError("No audio data available", 'NO_AUDIO');
         }
-        // NOTE: MP3 is CBR; formats without a bitrate (opus) assume 48 kbit/s.
-        const bufferSize = this.toBuffer().length;
-        const kbps = Number(/(\d+)kbitrate/.exec(this.output_format)?.[1] ?? 48);
-        return (bufferSize * 8) / (kbps * 1000);
-    }
-
-    private getFileExtension(format: string): string {
-        if (format.includes('mp3')) return 'mp3';
-        if (format.includes('opus') && format.includes('webm')) return 'webm';
-        if (format.includes('opus') && format.includes('ogg')) return 'ogg';
-        if (format.includes('wav') || format.includes('riff')) return 'wav';
-        if (format.includes('pcm') && format.includes('raw')) return 'pcm';
-        if (format.includes('alaw')) return 'alaw';
-        if (format.includes('mulaw')) return 'mulaw';
-        if (format.includes('truesilk')) return 'silk';
-        if (format.includes('g722')) return 'g722';
-        if (format.includes('amr')) return 'amr';
-        return 'audio';
+        return estimateDuration(this.toBuffer().length, this.output_format);
     }
 
     getAudioInfo(): { size: number; format: string; estimatedDuration: number } {
         const buffer = this.toBuffer();
         return {
             size: buffer.length,
-            format: this.getFileExtension(this.output_format),
+            format: fileExtension(this.output_format),
             estimatedDuration: this.getDuration()
         };
     }
 
     async toFile(outputPath: string, format?: string): Promise<string> {
         if (!format) {
-            format = this.getFileExtension(this.output_format);
+            format = fileExtension(this.output_format);
         }
         const audioBuffer = this.toBuffer();
-        const finalPath = `${outputPath}.${format}`;
+        const finalPath = outputPath.toLowerCase().endsWith(`.${format.toLowerCase()}`)
+            ? outputPath
+            : `${outputPath}.${format}`;
         await writeFile(finalPath, new Uint8Array(audioBuffer));
 
         return finalPath;
@@ -597,18 +229,14 @@ export class EdgeTTS {
 
     toBuffer(): Buffer {
         if (this.audio_stream.length === 0) {
-            throw new Error("No audio data available. Did you run synthesize() first?");
+            throw new EdgeTTSError("No audio data available. Did you run synthesize() first?", 'NO_AUDIO');
         }
         // When the service cannot speak the text it answers with a single empty
         // chunk, so the stream is not empty but the audio is. Checking the byte
         // count rather than the chunk count is what catches that.
         const buffer = Buffer.concat(this.audio_stream);
         if (buffer.length === 0) {
-            throw new Error(
-                "The service returned no audio. Voices are locale specific, so a voice cannot " +
-                "read text written in another script. Check that the voice matches the language " +
-                "of the text."
-            );
+            throw new EdgeTTSError(noAudioMessage(this.output_format), 'NO_AUDIO');
         }
         return buffer;
     }
@@ -621,9 +249,5 @@ export class EdgeTTS {
         const json = JSON.stringify(this.word_boundaries, null, 4);
 
         await writeFile(outputPath, json);
-    }
-
-    getWordBoundaries(): WordBoundary[] {
-        return this.word_boundaries;
     }
 }

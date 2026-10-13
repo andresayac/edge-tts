@@ -16,7 +16,6 @@ let service: FakeService;
 let tmp: string;
 
 beforeAll(() => {
-    (globalThis as any).window ??= globalThis;
     tmp = mkdtempSync(join(tmpdir(), 'edge-tts-'));
 });
 
