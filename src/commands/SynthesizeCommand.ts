@@ -1,6 +1,12 @@
 import { Command } from 'commander';
 import { EdgeTTS } from '../services/EdgeTTS';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks as Uint8Array[]).toString('utf-8');
+}
 
 export const SynthesizeCommand = new Command('synthesize')
   .description('Edge TTS: synthesize text to audio')
@@ -10,9 +16,11 @@ export const SynthesizeCommand = new Command('synthesize')
   .option('-l, --volume [volume]', 'Volume of speech', '0%')
   .option('-p, --pitch [pitch]', 'Pitch of speech', '0Hz')
   .option('-o, --output [output]', 'Output file name', `output_${Date.now()}`)
-  .option('-f, --file [file]', 'Input file (text)')
+  .option('-f, --file [file]', 'Input file (text), or - to read from stdin')
+  .option('--format <format>', 'Output format, e.g. audio-24khz-96kbitrate-mono-mp3')
+  .option('--subtitles <file>', 'Write subtitles (.srt, or .vtt for WebVTT)')
   .action(async (options) => {
-    const { text, voice, pitch, rate, volume, output, file } = options;
+    const { text, voice, pitch, rate, volume, output, file, format, subtitles } = options;
 
     if (!text && !file) {
       console.error('Error: Text (-t) or file (-f) is required');
@@ -26,7 +34,9 @@ export const SynthesizeCommand = new Command('synthesize')
 
     let content = text;
 
-    if (file) {
+    if (file === '-') {
+      content = await readStdin();
+    } else if (file) {
       try {
         content = await readFile(file, 'utf-8');
         console.log(`Reading from file: ${file}`);
@@ -38,12 +48,18 @@ export const SynthesizeCommand = new Command('synthesize')
 
     const tts = new EdgeTTS();
 
-    await tts.synthesize(content, voice, { 
-      pitch, 
-      rate, 
+    await tts.synthesize(content, voice, {
+      pitch,
+      rate,
       volume,
+      outputFormat: format,
     });
 
     const savedPath = await tts.toFile(output);
     console.log(`Audio file generated: ${savedPath}`);
+
+    if (subtitles) {
+      await writeFile(subtitles, /\.vtt$/i.test(subtitles) ? tts.toVTT() : tts.toSRT());
+      console.log(`Subtitles generated: ${subtitles}`);
+    }
   });

@@ -4,10 +4,12 @@ import { SynthesizeCommand } from '../commands/SynthesizeCommand';
 import { VoiceListCommand } from '../commands/VoiceListCommand';
 import { Command } from 'commander';
 
+const { version } = require('../../package.json');
+
 const program = new Command();
 
 program
-  .version('1.8.3')
+  .version(version)
   .addCommand(SynthesizeCommand)
   .addCommand(VoiceListCommand);
 
