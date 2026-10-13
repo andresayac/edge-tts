@@ -4,6 +4,7 @@ export type EdgeTTSErrorCode =
     | 'HANDSHAKE'
     | 'NETWORK'
     | 'INVALID_OPTION'
+    | 'REFUSED'
     | 'VOICES';
 
 export class EdgeTTSError extends Error {

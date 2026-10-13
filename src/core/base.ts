@@ -215,6 +215,7 @@ export abstract class EdgeTTSCore {
         onAudio: (chunk: Uint8Array) => void,
         onBoundary: (boundary: Boundary) => void,
     ): Promise<void> {
+        if (text.trim() === '') throw new EdgeTTSError('The text is empty.', 'INVALID_OPTION');
         const ssml = this.buildSSML(text, voice, options);
         const outputFormat = options.outputFormat || DEFAULT_OUTPUT_FORMAT;
 

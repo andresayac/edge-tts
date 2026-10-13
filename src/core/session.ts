@@ -26,6 +26,22 @@ export interface SessionOptions {
 const CONNECTING = 0;
 const OPEN = 1;
 
+// Close codes that end a session without an error: a normal close, a close
+// without a code (as when the client closes after turn.end) and a dropped
+// connection, which the missing audio reports afterwards.
+const CLEAN_CLOSE_CODES = [1000, 1005, 1006];
+
+/**
+ * The error for a close the service started to refuse the request. It
+ * sends code 1007 with a reason such as "Unsupported voice xx-XX-Nobody."
+ */
+export function closeError(event: { code?: number; reason?: unknown } | undefined): EdgeTTSError | undefined {
+    const code = event?.code;
+    if (typeof code !== 'number' || CLEAN_CLOSE_CODES.includes(code)) return undefined;
+    const reason = typeof event?.reason === 'string' && event.reason !== '' ? event.reason : `close code ${code}`;
+    return new EdgeTTSError(`The service refused the request: ${reason}`, 'REFUSED', { status: code });
+}
+
 export function abortReason(signal: AbortSignal): unknown {
     if (signal.reason !== undefined) return signal.reason;
     const error = new Error('This operation was aborted');
@@ -102,6 +118,6 @@ export function runSession(open: () => SocketLike, options: SessionOptions): Pro
         };
 
         socket.onerror = (event) => finish(options.toError(event, opened));
-        socket.onclose = () => finish();
+        socket.onclose = (event) => finish(closeError(event));
     });
 }

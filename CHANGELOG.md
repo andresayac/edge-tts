@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- An unsupported voice or output format rejects with `REFUSED` and the reason the service gives, such as "Unsupported voice xx-XX-NobodyNeural.", instead of resolving and failing later with "No audio data available".
+- An empty text rejects with `INVALID_OPTION` without connecting.
+
 ## 1.9.0
 
 Everything from 1.8.x keeps working: same methods, same signatures and the same error messages.

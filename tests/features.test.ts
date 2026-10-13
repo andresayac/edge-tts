@@ -208,6 +208,27 @@ describe('errors', () => {
         expect(error.code).toBe('VOICES');
         expect(error.status).toBe(403);
     });
+
+    it('carry the reason the service gives for refusing', async () => {
+        const { wssUrl } = serve({ close: { code: 1007, reason: 'Unsupported voice xx-XX-NobodyNeural.' } });
+        for (const tts of [new EdgeTTS({ wssUrl }), new BrowserEdgeTTS({ wssUrl })]) {
+            const error = await tts.synthesize('hi', 'xx-XX-NobodyNeural').catch(e => e);
+            expect(error).toBeInstanceOf(EdgeTTSError);
+            expect(error.code).toBe('REFUSED');
+            expect(error.status).toBe(1007);
+            expect(error.message).toBe('The service refused the request: Unsupported voice xx-XX-NobodyNeural.');
+        }
+    });
+
+    it('reject an empty text without connecting', async () => {
+        const { wssUrl, connections } = serve();
+        for (const text of ['', '  \n\t ']) {
+            const error = await new EdgeTTS({ wssUrl }).synthesize(text, 'en-US-AriaNeural').catch(e => e);
+            expect(error.code).toBe('INVALID_OPTION');
+            expect(error.message).toBe('The text is empty.');
+        }
+        expect(connections).toHaveLength(0);
+    });
 });
 
 describe('toFile', () => {

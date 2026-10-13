@@ -629,8 +629,9 @@ Errors raised by the library are `EdgeTTSError` instances with a `code`. Network
 | `HANDSHAKE` | The service refused the connection. `status` holds the HTTP status in Node.js (usually 403). |
 | `NETWORK` | The connection failed after it was open (browser). |
 | `TIMEOUT` | No data arrived for `timeout` ms. |
-| `NO_AUDIO` | No synthesis yet, or the service returned no audio (voice and text in different scripts, or an unsupported format). |
-| `INVALID_OPTION` | `pitch`, `rate` or `volume` is not valid. |
+| `NO_AUDIO` | No synthesis yet, or the service returned no audio (voice and text in different scripts, or a text of only punctuation). |
+| `REFUSED` | The service refused the request and said why, such as `Unsupported voice xx-XX-NobodyNeural.` or an unsupported output format. `status` holds the WebSocket close code (1007). |
+| `INVALID_OPTION` | The text is empty, or `pitch`, `rate` or `volume` is not valid. |
 | `VOICES` | The voice list request failed. `status` holds the HTTP status. |
 
 Cancelling with an `AbortSignal` rejects with the signal's reason, an `AbortError`.

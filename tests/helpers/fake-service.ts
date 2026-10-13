@@ -8,6 +8,9 @@ export interface FakeServiceOptions {
     accept?: (url: URL) => boolean | Promise<boolean>;
     frames?: Frame[];
     silent?: boolean;
+    // Close with this code and reason after the SSML message, as the service
+    // does for an unsupported voice or output format.
+    close?: { code: number; reason: string };
     voices?: { status: number; body: unknown };
 }
 
@@ -64,6 +67,10 @@ export function startFakeService(options: FakeServiceOptions = {}): FakeService 
                 const text = typeof message === 'string' ? message : Buffer.from(message).toString();
                 connection.messages.push(text);
                 if (!text.includes('Path:ssml') || options.silent) return;
+                if (options.close) {
+                    ws.close(options.close.code, options.close.reason);
+                    return;
+                }
                 for (const frame of options.frames ?? recorded.frames) {
                     if (frame.text !== undefined) ws.send(frame.text);
                     else ws.send(Buffer.from(frame.binary!, 'base64'));
