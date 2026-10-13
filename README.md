@@ -3,6 +3,16 @@
 
 **Edge TTS** is a powerful Text-to-Speech (TTS) package that leverages Microsoft's Edge capabilities. This package allows you to synthesize speech from text and manage voice options easily through a command-line interface (CLI).
 
+## Available in three languages
+
+The same library for the Edge text-to-speech service, in Node.js, PHP and Go:
+
+| Language | Install | Repository |
+| --- | --- | --- |
+| **Node.js and browsers** (this one) | `npm install @andresaya/edge-tts` | [andresayac/edge-tts](https://github.com/andresayac/edge-tts) |
+| PHP | `composer require afaya/edge-tts` | [andresayac/edge-tts-php](https://github.com/andresayac/edge-tts-php) |
+| Go | `go get github.com/andresayac/edge-tts-go` | [andresayac/edge-tts-go](https://github.com/andresayac/edge-tts-go) |
+
 ## Features
 
 - **Text-to-Speech**: Convert text into natural-sounding speech using Microsoft Edge's TTS capabilities.
@@ -658,9 +668,6 @@ async function handleErrors() {
     }
 }
 ```
-
-## PHP Version
-If you want to use Edge TTS with PHP, you can check out the PHP version of this package: [Edge TTS PHP](https://github.com/andresayac/edge-tts-php)
 
 ## License
 This project is licensed under the GNU General Public License v3 (GPLv3).
